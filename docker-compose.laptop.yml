@@ -1,0 +1,34 @@
+# Lightweight laptop profile (RTX 3050 / 16 GB): SQLite + in-process
+# vectors only. No Postgres, no Qdrant, no Redis. This is the recommended
+# first run on the user's hardware.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-in-production}
+      MAX_FRAMES: "120"
+      FRAME_FPS: "1"
+      WORKER_CONCURRENCY: "1"
+    volumes:
+      - backend_storage:/app/storage
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+volumes:
+  backend_storage:
