@@ -15,7 +15,7 @@ from .routers import auth, search_chat_reports, videos
 from .services import detection, worker
 from .services.vlm import provider_name
 
-app = FastAPI(title="VisionIQ", version="0.1.0",
+app = FastAPI(title="VisionIQ", version="0.2.0",
               description="Multimodal Video Intelligence and Agentic Search Platform (independent implementation, inspired by NVIDIA VSS architecture).")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -49,7 +49,9 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.1.0", "vlm_provider": provider_name(),
+    return {"status": "ok", "version": "0.2.0", "vlm_provider": provider_name(),
+            "embedding_provider": settings.EMBEDDING_PROVIDER,
+            "worker_mode": settings.WORKER_MODE,
             "detection": detection.provider_status()}
 
 

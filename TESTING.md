@@ -34,3 +34,15 @@ Proposed method when those exist:
 
 Until then, the only performance claims in this repo are the ones in
 PROJECT_STATE.md (tests passed, build passed).
+
+## Phase 2 results (2026-11-05, this machine, CPU only)
+
+- `pytest backend/tests/ -q` → **7 passed** (Phase 1 full flow + Phase 2:
+  VLM mock server, Qdrant in-memory, Celery eager, detection-unavailable,
+  hash determinism).
+- Benchmark (`scripts/benchmark.py`, 12 labelled queries):
+  hash Recall@1 0.67 / MRR 0.76; fastembed Recall@1 1.00 / MRR 1.00.
+- Detection: bus.jpg — 4 persons + 1 bus, confidence 0.88–0.90,
+  456–880 ms/frame; bus video upload → ready, 15 detections in DB.
+- Alembic: upgrade head / downgrade base / upgrade head on SQLite — 13 tables
+  incl. alembic_version.

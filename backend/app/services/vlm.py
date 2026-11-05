@@ -32,10 +32,15 @@ def _openai_compatible_caption(frame_path: str, prompt: str) -> str | None:
         "max_tokens": 300,
     }
     try:
-        r = httpx.post(f"{settings.VLM_BASE_URL.rstrip('/')}/chat/completions",
-                       json=body, headers=headers, timeout=120)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
+        # trust_env=False: httpx parses NO_PROXY from the environment,
+        # and some runtimes export bracketed IPv6 entries there that
+        # httpx rejects (InvalidURL: Invalid port ':1]'), breaking even
+        # local Ollama calls. VisionIQ talks to the VLM directly.
+        with httpx.Client(trust_env=False, timeout=120) as client:
+            r = client.post(f"{settings.VLM_BASE_URL.rstrip('/')}/chat/completions",
+                            json=body, headers=headers)
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         return None
 

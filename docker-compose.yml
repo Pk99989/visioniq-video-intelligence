@@ -1,6 +1,7 @@
-# Full stack for a dev machine (PostgreSQL + Qdrant + Redis reserved for
-# future queue use; the backend itself runs with an in-process worker in
-# this release, so Redis is optional and not required to start).
+# Full stack (Phase 2): PostgreSQL + Qdrant + Redis + Celery worker.
+# Alembic migrations run at backend startup? No — run them explicitly:
+#   docker compose exec backend alembic upgrade head
+# (create_all is still kept as a fallback in app startup.)
 services:
   postgres:
     image: postgres:16
@@ -21,6 +22,15 @@ services:
       - qdrantdata:/qdrant/storage
     ports:
       - "6333:6333"
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   backend:
     build:
       context: ./backend
@@ -29,6 +39,14 @@ services:
       DATABASE_URL: postgresql://visioniq:visioniq@postgres:5432/visioniq
       QDRANT_URL: http://qdrant:6333
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      WORKER_MODE: celery
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+      VLM_PROVIDER: ${VLM_PROVIDER:-fallback}
+      VLM_BASE_URL: ${VLM_BASE_URL:-}
+      VLM_MODEL: ${VLM_MODEL:-}
+      VLM_API_KEY: ${VLM_API_KEY:-}
     volumes:
       - backend_storage:/app/storage
     ports:
@@ -36,6 +54,35 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.services.celery_app.celery_app worker --loglevel=info --concurrency=1
+    environment:
+      DATABASE_URL: postgresql://visioniq:visioniq@postgres:5432/visioniq
+      QDRANT_URL: http://qdrant:6333
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      WORKER_MODE: celery
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-fastembed}
+    volumes:
+      - backend_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -54,4 +101,5 @@ services:
 volumes:
   pgdata:
   qdrantdata:
+  redisdata:
   backend_storage:

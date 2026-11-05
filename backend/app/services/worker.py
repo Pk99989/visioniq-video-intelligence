@@ -19,7 +19,25 @@ def _video_dir(video: Video) -> Path:
     return settings.STORAGE_DIR / "videos" / str(video.id)
 
 
+def dispatch(video_id: int, background=None) -> None:
+    """Route processing by WORKER_MODE: sync (tests), celery (full
+    stack, needs Redis), or in-process BackgroundTasks (laptop)."""
+    if settings.SYNC_PROCESSING:
+        process_video(video_id)
+        return
+    if settings.WORKER_MODE == "celery":
+        from .celery_app import process_video_task
+
+        process_video_task.delay(video_id)
+        return
+    if background is not None:
+        background.add_task(process_video, video_id)
+    else:
+        process_video(video_id)
+
+
 def process_video(video_id: int) -> None:
+    detection.reset_tracker()
     db: Session = SessionLocal()
     try:
         video = db.get(Video, video_id)

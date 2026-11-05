@@ -47,16 +47,62 @@ def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_s
     return scored[:top_k]
 
 
+_qdrant_clients: dict[str, object] = {}
+
+
+def get_qdrant_client():
+    """QDRANT_URL=":memory:" gives an in-memory client (used by tests);
+    otherwise a normal HTTP client for QDRANT_URL. Clients are cached
+    per URL: an in-memory client holds its state in the instance, so a
+    fresh client per call would lose every point just upserted."""
+    from qdrant_client import QdrantClient
+
+    url = settings.QDRANT_URL
+    if url not in _qdrant_clients:
+        _qdrant_clients[url] = QdrantClient(":memory:") if url == ":memory:" else QdrantClient(url=url)
+    return _qdrant_clients[url]
+
+
+def ensure_qdrant_collection(client=None) -> bool:
+    """Create the collection (384-d, cosine) if it does not exist yet.
+    Phase 1 upserted points without ever creating the collection, so a
+    fresh Qdrant would reject the first upsert."""
+    if not settings.QDRANT_URL:
+        return False
+    try:
+        from qdrant_client.models import Distance, VectorParams
+
+        client = client or get_qdrant_client()
+        if not client.collection_exists(settings.QDRANT_COLLECTION):
+            client.create_collection(
+                settings.QDRANT_COLLECTION,
+                vectors_config=VectorParams(size=settings.EMBEDDING_DIM, distance=Distance.COSINE),
+            )
+        return True
+    except Exception:
+        return False
+
+
 def try_qdrant_upsert(frame_id: int, vector: list[float], payload: dict) -> bool:
     if not settings.QDRANT_URL:
         return False
     try:
-        from qdrant_client import QdrantClient
         from qdrant_client.models import PointStruct
 
-        client = QdrantClient(url=settings.QDRANT_URL)
+        client = get_qdrant_client()
+        ensure_qdrant_collection(client)
         client.upsert(settings.QDRANT_COLLECTION,
                       points=[PointStruct(id=frame_id, vector=vector, payload=payload)])
         return True
     except Exception:
         return False
+
+
+def qdrant_search(vector: list[float], top_k: int = 10, client=None):
+    """Vector-only search against Qdrant; returns scored points."""
+    from qdrant_client.models import Filter
+
+    client = client or get_qdrant_client()
+    ensure_qdrant_collection(client)
+    return client.query_points(settings.QDRANT_COLLECTION, query=vector,
+                               limit=top_k, with_payload=True).points

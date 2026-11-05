@@ -11,6 +11,19 @@ citations, summarises long videos hierarchically, evaluates configurable
 event rules, and generates JSON/PDF reports — through a LangGraph-shaped
 agent and an MCP tool server.
 
+## What is new in v0.2.0 — Phase 2 (verified, 2026-11-05, CPU only)
+
+- **Real detection:** YOLOv8n ONNX — `python scripts/download_yolo.py`, then
+  Detection shows `yolo-onnx / available: true` in `/health`. Verified on
+  bus.jpg (4 persons + 1 bus, 0.88–0.90 confidence).
+- **Real embeddings:** `EMBEDDING_PROVIDER=fastembed` (BAAI/bge-small-en-v1.5,
+  384-d). Measured on 12 labelled queries: Recall@1 1.00 vs 0.67 for hash.
+- **Qdrant, Alembic, Celery:** collection is created before upsert;
+  `alembic upgrade head` (12 tables); Celery worker in the full stack.
+- **VLM:** client verified against a mock Ollama/NIM server. To use a real
+  model on the RTX 3050: `ollama pull llava:7b`, then
+  `VLM_PROVIDER=ollama VLM_BASE_URL=http://localhost:11434/v1 VLM_MODEL=llava:7b`.
+
 ## What actually works in v0.1.0 (verified, 2026-11-04)
 
 - Auth (PBKDF2 + JWT), RBAC (user/admin), per-user video isolation —

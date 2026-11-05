@@ -6,8 +6,14 @@ httpx==0.28.1
 opencv-python-headless==4.12.0.88
 reportlab==4.4.6
 pytest==8.4.2
-# Optional, only if you want real YOLO detection / Qdrant / sentence embeddings:
-# ultralytics==8.3.200
-# qdrant-client==1.16.2
-# sentence-transformers==5.1.2
 python-multipart==0.0.20
+# Phase 2 (real models + queue + vector store, all CPU-friendly):
+alembic==1.20.1
+celery==5.6.3
+redis==8.1.0
+qdrant-client==1.20.0
+onnxruntime==1.31.1
+fastembed==0.9.1
+# Optional, only if you want the ultralytics .pt path instead of ONNX:
+# ultralytics==8.3.200  (needs torch, ~2 GB; use yolov8n.onnx instead on a laptop)
+# sentence-transformers==5.1.2  (needs torch; fastembed is the light alternative)

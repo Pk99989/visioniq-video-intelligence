@@ -1,7 +1,7 @@
-# PROJECT_STATE — VisionIQ v0.1.0
+# PROJECT_STATE — VisionIQ v0.2.0
 
-- **Current phase**: Phase 1 complete (working end-to-end core). Phase 2
-  (real models + Postgres/Qdrant hardening) is pending and listed below.
+- **Current phase**: Phase 2 complete (real models + hardening), verified 2026-11-05.
+  v0.1.4 fixes (login 422 crash, video-page use() bug) are included.
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnail/frames; OpenCV scene
   segmentation; fallback captions; hash embeddings; hybrid search;
@@ -9,17 +9,32 @@
   duplicate suppression + alerts; JSON/PDF reports; agent tool registry;
   MCP server (stdio + HTTP); Next.js frontend, 14 routes, build passes;
   docker-compose (full + laptop); GitHub Actions CI.
-- **Pending features**: real YOLO weights download + detection benchmark;
-  real VLM (Cosmos/Nemotron via NIM or Ollama vision model) end-to-end
-  test; sentence-transformers embedding benchmark; Qdrant live test;
-  PostgreSQL migration files (Alembic — currently tables are created by
-  SQLAlchemy `create_all`, see DATABASE_SCHEMA.md); Redis/Celery queue
-  replacing the in-process worker; light/dark theme toggle is implemented
-  (ThemeToggle) but defaults to dark; shadcn/ui component library is
-  represented by small local ui components, not the full shadcn package;
-  e2e browser tests; benchmark suite (Recall@K, faithfulness, etc. —
-  no numbers are claimed yet, see TESTING.md).
+- **Phase 2 done (verified 2026-11-05, this machine, CPU only)**:
+  YOLOv8n ONNX detection (bus.jpg: 4 persons + 1 bus, 0.88-0.90 conf,
+  456-880 ms/frame, stable track_ids; bus video upload: 15 detections
+  in DB, caption "Detected: bus, person"); FastEmbed embeddings
+  (Recall@1 1.00 vs hash 0.67, MRR 1.00 vs 0.76, 12 queries);
+  Qdrant collection creation + in-memory upsert/search; Alembic
+  initial migration (12 tables, upgrade/downgrade verified);
+  Celery/Redis worker (eager test + compose services); VLM client
+  verified against a local mock Ollama/NIM server; benchmark suite
+  with measured numbers in docs/benchmarks/2026-11-05.md.
+- **Pending features**: a real VLM model run end to end (Ollama
+  llava:7b / qwen2-vl:7b on the user's RTX 3050 — documented, not run
+  here); sentence-transformers path (code present, needs torch, not
+  tested here); ultralytics .pt + ByteTrack path (code present, torch
+  install stalled on this machine and was stopped — ONNX is the
+  tested path); Postgres live test of the Alembic migration (SQLite
+  verified; Postgres needs Docker, not available here); Qdrant live
+  server test (in-memory verified; server needs Docker); e2e browser
+  tests; shadcn/ui full adoption; range/seek video streaming.
 - **Files modified**: see git log (initial commit in this session).
+- **Tests executed (2026-11-05, Phase 2, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` → **7 passed** (2 Phase 1
+    full-flow tests + 5 Phase 2 tests: VLM mock, Qdrant in-memory,
+    Celery eager, detection-unavailable, hash determinism).
+  - Benchmark: hash Recall@1 0.67 / MRR 0.76; fastembed 1.00 / 1.00.
+  - Detection smoke: bus video upload -> ready, 15 detections in DB.
 - **Tests executed (2026-11-04, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` → **2 passed**.
     Full flow: register/login, upload a real 3 s ffmpeg test video,

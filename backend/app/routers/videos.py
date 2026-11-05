@@ -51,11 +51,8 @@ def upload_video(background: BackgroundTasks, title: str = Form(...), file: Uplo
     db.add(ProcessingJob(video_id=video.id, status="queued"))
     db.commit()
     db.refresh(video)
-    if settings.SYNC_PROCESSING:
-        worker.process_video(video.id)
-        db.refresh(video)
-    else:
-        background.add_task(worker.process_video, video.id)
+    worker.dispatch(video.id, background)
+    db.refresh(video)
     return video
 
 
@@ -91,10 +88,7 @@ def retry_video(background: BackgroundTasks, video_id: int,
     db.add(ProcessingJob(video_id=video.id, status="queued"))
     video.status = "uploaded"
     db.commit()
-    if settings.SYNC_PROCESSING:
-        worker.process_video(video.id)
-    else:
-        background.add_task(worker.process_video, video.id)
+    worker.dispatch(video.id, background)
     db.refresh(video)
     return video
 

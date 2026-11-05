@@ -54,3 +54,36 @@ Never force-push without explicit authorisation.
 - Resource limits are in the compose files (2 CPU / 4 GB per backend);
   raise them only if you have headroom — the RTX 3050 / 16 GB target
   does not.
+
+## Phase 2 — real models, migrations, queue (v0.2.0)
+
+**Detection (YOLOv8n ONNX, recommended on a laptop):**
+```
+python scripts/download_yolo.py        # downloads yolov8n.onnx (13 MB) into backend/
+# then rebuild / restart; /health should show detection: yolo-onnx, available: true
+```
+Weights are NOT committed to git (see .gitignore) — download them on each
+machine. The .pt + ultralytics path is an alternative (`--pt`), needs torch.
+
+**Embeddings:** set `EMBEDDING_PROVIDER=fastembed` in `.env` (default is
+still `hash`, no download). First use downloads ~65 MB (BAAI/bge-small-en-v1.5).
+
+**Real VLM on the RTX 3050 (Ollama):**
+```
+ollama pull llava:7b        # or: ollama pull qwen2-vl:7b
+# .env: VLM_PROVIDER=ollama, VLM_BASE_URL=http://localhost:11434/v1, VLM_MODEL=llava:7b
+# In the full docker stack, the backend runs in a container, so use
+# VLM_BASE_URL=http://host.docker.internal:11434/v1 instead.
+```
+
+**Migrations (Alembic):**
+```
+cd backend && alembic upgrade head     # 12 tables; downgrade base reverses it
+```
+
+**Celery worker (full stack only):** `docker compose up` now starts a
+`worker` service (Redis broker). The laptop profile stays in-process
+(`WORKER_MODE=in_process`). Locally: `celery -A app.services.celery_app.celery_app worker --loglevel=info`.
+
+**Benchmarks:** `cd backend && EMBEDDING_PROVIDER=fastembed python ../scripts/benchmark.py`
+— results in `docs/benchmarks/<date>.md`.

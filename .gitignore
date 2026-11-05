@@ -10,3 +10,5 @@ backend/storage/
 backend/*.db
 *.db
 .DS_Store
+*.onnx
+*.pt
