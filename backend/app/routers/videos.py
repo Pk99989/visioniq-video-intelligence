@@ -1,15 +1,19 @@
+import re
 import shutil
+from collections import Counter
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import SessionLocal, get_db
-from ..models import Alert, Caption, Event, Frame, ProcessingJob, Scene, User, Video
+from ..models import Alert, Caption, Detection, Event, Frame, ProcessingJob, Scene, User, Video
 from ..schemas import EventRuleIn, VideoOut
-from ..security import get_current_user, video_visible_to
+from ..security import create_stream_token, get_current_user, verify_stream_token, video_visible_to
+from ..services import clips as clips_svc
+from ..services import detection as detection_svc
 from ..services import events as events_svc
 from ..services import worker
 
@@ -93,15 +97,127 @@ def retry_video(background: BackgroundTasks, video_id: int,
     return video
 
 
+def _auth_for_stream(request: Request, video_id: int, db: Session) -> User:
+    """Stream auth: bearer token (API clients) OR a short-lived signed
+    ?token= (the <video> tag, which cannot send headers)."""
+    token = request.query_params.get("token")
+    if token:
+        verified = verify_stream_token(token)
+        if not verified or verified[1] != video_id:
+            raise HTTPException(401, "Invalid or expired stream token")
+        user = db.get(User, verified[0])
+        if not user:
+            raise HTTPException(401, "User not found")
+        return user
+    return _bearer_user(request, db)
+
+
+def _bearer_user(request: Request, db: Session) -> User:
+    from ..security import decode_token, is_revoked
+
+    auth = request.headers.get("Authorization", "")
+    raw = auth.removeprefix("Bearer ").strip()
+    data = decode_token(raw) if raw else None
+    if not data or is_revoked(db, data.get("jti")):
+        raise HTTPException(401, "Invalid or expired token")
+    user = db.get(User, int(data["sub"]))
+    if not user:
+        raise HTTPException(401, "User not found")
+    return user
+
+
+@router.get("/{video_id}/stream-url")
+def stream_url(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return a signed URL the <video> tag can use directly (5 min).
+    This is what makes HTTP Range seeking work in the browser."""
+    _get_video(db, video_id, user)
+    token = create_stream_token(user, video_id)
+    return {"url": f"/api/v1/videos/{video_id}/stream?token={token}", "expires_in_seconds": 300}
+
+
 @router.get("/{video_id}/stream")
-def stream_video(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def stream_video(request: Request, video_id: int, db: Session = Depends(get_db)):
+    user = _auth_for_stream(request, video_id, db)
     video = _get_video(db, video_id, user)
-    if not Path(video.file_path).exists():
+    path = Path(video.file_path)
+    if not path.exists():
         raise HTTPException(404, "Video file not found")
-    ext = Path(video.file_path).suffix.lower()
+    ext = path.suffix.lower()
     media = {"mp4": "video/mp4", "webm": "video/webm", "mov": "video/quicktime",
              "mkv": "video/x-matroska", "avi": "video/x-msvideo"}.get(ext.lstrip("."), "video/mp4")
-    return FileResponse(video.file_path, media_type=media, filename=video.original_filename)
+    size = path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(path, media_type=media, filename=video.original_filename)
+    m = re.match(r"bytes=(\d*)-(\d*)", range_header)
+    if not m:
+        raise HTTPException(416, "Invalid Range header")
+    start_s, end_s = m.groups()
+    start = int(start_s) if start_s else size - int(end_s) if end_s else 0
+    end = int(end_s) if end_s else size - 1
+    if start < 0 or start >= size or end < start:
+        raise HTTPException(416, "Requested Range Not Satisfiable")
+    end = min(end, size - 1)
+
+    def _iter():
+        with path.open("rb") as f:
+            f.seek(start)
+            remaining = end - start + 1
+            while remaining > 0:
+                chunk = f.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
+
+    return StreamingResponse(_iter(), status_code=206, media_type=media, headers={
+        "Content-Range": f"bytes {start}-{end}/{size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(end - start + 1),
+    })
+
+
+@router.get("/{video_id}/clip")
+def download_clip(video_id: int, start: float = Query(..., ge=0),
+                  end: float = Query(..., gt=0),
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Download a [start, end] clip of a processed video as an mp4."""
+    video = _get_video(db, video_id, user)
+    if video.duration_seconds and end > video.duration_seconds:
+        raise HTTPException(400, f"end {end}s is past the video duration {video.duration_seconds}s")
+    if end <= start or end - start > 120:
+        raise HTTPException(400, "Clip must be 0-120 seconds long and end after start")
+    try:
+        clip_path = clips_svc.extract_clip(Path(video.file_path), video.id, start, end)
+    except Exception as e:  # noqa: BLE001 - ffmpeg failure
+        raise HTTPException(500, f"Clip extraction failed: {e}")
+    return FileResponse(clip_path, media_type="video/mp4",
+                        filename=f"clip_{video.id}_{start:.1f}-{end:.1f}.mp4")
+
+
+@router.get("/{video_id}/detections")
+def get_detections(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_video(db, video_id, user)
+    dets = db.query(Detection).filter_by(video_id=video_id).order_by(Detection.timestamp_seconds).all()
+    return [{"id": d.id, "frame_id": d.frame_id, "track_id": d.track_id, "label": d.label,
+             "confidence": round(d.confidence, 3), "timestamp_seconds": d.timestamp_seconds,
+             "x1": round(d.x1, 1), "y1": round(d.y1, 1), "x2": round(d.x2, 1), "y2": round(d.y2, 1)}
+            for d in dets]
+
+
+@router.get("/{video_id}/analytics")
+def get_analytics(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    video = _get_video(db, video_id, user)
+    dets = db.query(Detection).filter_by(video_id=video_id).all()
+    counts = Counter(d.label for d in dets)
+    return {"video_id": video.id, "title": video.title, "status": video.status,
+            "duration_seconds": video.duration_seconds,
+            "scene_count": db.query(Scene).filter_by(video_id=video_id).count(),
+            "frame_count": db.query(Frame).filter_by(video_id=video_id).count(),
+            "caption_count": db.query(Caption).filter_by(video_id=video_id).count(),
+            "detection_count": len(dets),
+            "detections_by_label": dict(counts),
+            "top_labels": [{"label": label, "count": n} for label, n in counts.most_common(5)]}
 
 
 @router.get("/{video_id}/scenes")
@@ -127,6 +243,23 @@ def get_frame_image(video_id: int, frame_id: int,
     if not frame or frame.video_id != video_id or not Path(frame.file_path).exists():
         raise HTTPException(404, "Frame not found")
     return FileResponse(frame.file_path, media_type="image/jpeg")
+
+
+@router.get("/{video_id}/frames/{frame_id}/annotated")
+def get_frame_annotated(video_id: int, frame_id: int,
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The frame image with YOLO boxes drawn on it (cached on disk)."""
+    _get_video(db, video_id, user)
+    frame = db.get(Frame, frame_id)
+    if not frame or frame.video_id != video_id or not Path(frame.file_path).exists():
+        raise HTTPException(404, "Frame not found")
+    dets = db.query(Detection).filter_by(frame_id=frame_id).all()
+    out = Path(frame.file_path).parent / f"annotated_{frame_id}.jpg"
+    if not out.exists():
+        detection_svc.annotate_frame(frame.file_path,
+            [{"label": d.label, "confidence": d.confidence, "x1": d.x1, "y1": d.y1,
+              "x2": d.x2, "y2": d.y2} for d in dets], str(out))
+    return FileResponse(out, media_type="image/jpeg")
 
 
 @router.get("/{video_id}/captions")

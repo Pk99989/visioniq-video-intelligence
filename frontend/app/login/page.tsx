@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API } from "@/lib/api";
+import Link from "next/link";
 import { Button, Card, ErrorBox, Input } from "@/components/ui";
 
 export default function Login() {
@@ -49,6 +50,7 @@ export default function Login() {
         <Button onClick={() => submit("login")}>Sign in</Button>
         <Button onClick={() => submit("register")}>Create account</Button>
       </div>
+      <p className="text-sm"><Link href="/forgot" className="text-indigo-600">Forgot password?</Link></p>
       <p className="text-xs text-gray-500">Passwords are hashed server-side (PBKDF2) and never stored in plain text. Tokens are stored only in your browser.</p>
     </Card>
   );

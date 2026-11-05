@@ -7,6 +7,8 @@ import { Card, Empty, ErrorBox, Loading } from "@/components/ui";
 type Scene = { id: number; index: number; start_seconds: number; end_seconds: number };
 type Caption = { id: number; timestamp_seconds: number; text: string; provider: string; frame_id: number | null };
 type Frame = { id: number; timestamp_seconds: number; scene_id: number | null; image_url: string };
+type Detection = { id: number; frame_id: number; track_id: number | null; label: string; confidence: number; timestamp_seconds: number; x1: number; y1: number; x2: number; y2: number };
+type Analytics = { detection_count: number; detections_by_label: Record<string, number>; top_labels: { label: string; count: number }[] };
 
 export default function VideoPage({ params, searchParams }: {
   params: { id: string }; searchParams: { t?: string };
@@ -22,6 +24,8 @@ export default function VideoPage({ params, searchParams }: {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [frames, setFrames] = useState<Frame[]>([]);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -36,10 +40,18 @@ export default function VideoPage({ params, searchParams }: {
       api<Scene[]>(`/api/v1/videos/${id}/scenes`).then((s) => { if (!stopped) setScenes(s); }).catch(() => {});
       api<Caption[]>(`/api/v1/videos/${id}/captions`).then((c) => { if (!stopped) setCaptions(c); }).catch(() => {});
       api<Frame[]>(`/api/v1/videos/${id}/frames`).then((f) => { if (!stopped) setFrames(f); }).catch(() => {});
+      api<Detection[]>(`/api/v1/videos/${id}/detections`).then((d) => { if (!stopped) setDetections(d); }).catch(() => {});
+      api<Analytics>(`/api/v1/videos/${id}/analytics`).then((a) => { if (!stopped) setAnalytics(a); }).catch(() => {});
     };
     loadAll();
-    fetch(`${API}/api/v1/videos/${id}/stream`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then((r) => r.blob()).then((b) => { if (!stopped) setStreamUrl(URL.createObjectURL(b)); }).catch(() => {});
+    // Phase 3: use the signed stream URL so the <video> tag can seek
+    // with HTTP Range requests (206) instead of a blob fetch.
+    api<{ url: string }>(`/api/v1/videos/${id}/stream-url`)
+      .then((d) => { if (!stopped) setStreamUrl(`${API}${d.url}`); })
+      .catch(() => {
+        fetch(`${API}/api/v1/videos/${id}/stream`, { headers: { Authorization: `Bearer ${getToken()}` } })
+          .then((r) => r.blob()).then((b) => { if (!stopped) setStreamUrl(URL.createObjectURL(b)); }).catch(() => {});
+      });
     const timer = setInterval(() => {
       // Stop polling once ready/failed; the video state drives this.
       setVideo((v) => {
@@ -85,6 +97,19 @@ export default function VideoPage({ params, searchParams }: {
             {" "}{c.text} <span className="text-gray-500">({c.provider})</span>
           </p>
         ))}
+      </Card>
+      <Card>
+        <h2 className="font-semibold">Detections {analytics ? `(${analytics.detection_count})` : ""}</h2>
+        {analytics && analytics.top_labels.length > 0 ? (
+          <p className="text-sm text-gray-500">{analytics.top_labels.map((x) => `${x.label}: ${x.count}`).join(" · ")}</p>
+        ) : <Empty text="No detections yet (run YOLO, or video may still be processing)." />}
+        {detections.slice(0, 20).map((d) => (
+          <p key={d.id} className="border-t py-1 text-sm">
+            <button className="text-indigo-600" onClick={() => seek(d.timestamp_seconds)}>{d.timestamp_seconds.toFixed(1)}s</button>
+            {" "}{d.label} {d.confidence.toFixed(2)}{d.track_id !== null ? ` · track #${d.track_id}` : ""}
+          </p>
+        ))}
+        {detections.length > 20 && <p className="text-xs text-gray-500">Showing first 20 of {detections.length} detections.</p>}
       </Card>
       <Card>
         <h2 className="font-semibold">Evidence frames</h2>

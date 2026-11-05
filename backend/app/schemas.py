@@ -15,6 +15,15 @@ class LoginIn(BaseModel):
     password: str
 
 
+class PasswordResetRequestIn(BaseModel):
+    email: str
+
+
+class PasswordResetIn(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class UserOut(BaseModel):
     id: int
     email: str

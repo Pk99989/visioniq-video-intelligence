@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import SignOut from "@/components/SignOut";
 import "./globals.css";
 
 const NAV = [
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="ml-auto flex items-center gap-3">
               <ThemeToggle />
               <Link href="/login" className="text-sm text-indigo-600">Sign in</Link>
+              <SignOut />
             </div>
           </div>
         </header>

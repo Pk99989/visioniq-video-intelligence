@@ -16,3 +16,11 @@
 | 12 | Qdrant test + Alembic migrations | Done (in-memory/SQLite) | Qdrant collection + in-memory upsert/search verified; Alembic initial migration upgrade/downgrade verified on SQLite; live Postgres/Qdrant server tests need Docker |
 | 13 | Redis/Celery worker | Done | celery_app + redis/worker compose services; eager task test passes; laptop default stays in_process |
 | 14 | Benchmark suite | Done | scripts/benchmark.py + docs/benchmarks/2026-11-05.md; e2e browser tests still pending |
+
+| 15 | Range streaming + signed video URLs | Done | 206/416/signed-token tests pass |
+| 16 | Clip retrieval (ffmpeg) + Search download button | Done | 0-2s clip verified as real mp4 |
+| 17 | Detections + analytics + annotated frames | Done | Bus video: bus+person, >=5 detections |
+| 18 | Logout revocation + password reset | Done | Token 401 after logout; reset single-use verified |
+| 19 | Alembic migration v2 | Done | upgrade/downgrade verified on SQLite |
+| 20 | Real VLM model run (Ollama llava:7b) | Pending | Needs Ollama on user's RTX 3050 |
+| 21 | E2E browser tests | Pending | Playwright not run here |

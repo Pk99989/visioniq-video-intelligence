@@ -11,6 +11,18 @@ citations, summarises long videos hierarchically, evaluates configurable
 event rules, and generates JSON/PDF reports — through a LangGraph-shaped
 agent and an MCP tool server.
 
+## What is new in v0.3.0 — Phase 3, advanced level (verified, 2026-11-05)
+
+- **Seekable video:** HTTP Range streaming (206) with a 5-minute signed
+  stream URL, so the player seeks natively instead of downloading the
+  whole video as a blob.
+- **Clips:** download any 0–120 s clip from a video, from the Search
+  page ("Download clip (±2s)") or `GET /api/v1/videos/{id}/clip?start=&end=`.
+- **Detections:** video page shows a Detections card (labels, counts,
+  track IDs, timestamps) and annotated frames with boxes drawn on them.
+- **Auth:** Sign out actually revokes your token, and Forgot password
+  works with a single-use reset token (shown locally; email it in prod).
+
 ## What is new in v0.2.0 — Phase 2 (verified, 2026-11-05, CPU only)
 
 - **Real detection:** YOLOv8n ONNX — `python scripts/download_yolo.py`, then

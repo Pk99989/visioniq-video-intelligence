@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## v0.3.0 — 2026-11-05 (Phase 3: advanced level)
+
+- **Range streaming:** GET /stream now honours `Range: bytes=` with 206
+  Partial Content + Content-Range, and GET /stream-url returns a
+  5-minute signed URL so the <video> tag can seek natively instead of
+  a blob fetch. Verified: 200 full, 206 bytes=0-99 (100 bytes),
+  416 invalid range, signed URL works without a bearer token, tampered
+  token 401, no auth 401.
+- **Clip retrieval:** GET /videos/{id}/clip?start=&end= cuts an mp4
+  clip with ffmpeg (re-encode, 0-120 s). Verified on a bus video:
+  0-2 s clip is a real mp4; start>=end and end>duration return 400;
+  cross-user 404. Search page has a "Download clip (±2s)" button.
+- **Detections + analytics:** GET /detections (label, confidence,
+  track_id, box, timestamp), GET /analytics (counts by label, scenes,
+  frames, captions), GET /frames/{id}/annotated (boxes drawn on the
+  frame). Video page shows a Detections card with top labels.
+  Verified on bus video: bus + person present, >=5 detections.
+- **Auth hardening:** JWTs carry a jti; POST /auth/logout revokes the
+  token (verified: token 401 after logout); password reset with
+  single-use hashed tokens, 1-hour expiry (verified: wrong token 400,
+  reuse 400, old password fails, new password works, unknown email
+  still returns 200 with no token).
+- **Alembic migration v2:** revoked_tokens + password_reset_tokens
+  (upgrade/downgrade verified on SQLite).
+- Tests: 10 passed (7 Phase 1-2 + 3 Phase 3).
+
 ## v0.2.1 — 2026-11-05 (video page auto-refresh)
 
 - Video page now polls every 3s while a video is processing, so scenes,

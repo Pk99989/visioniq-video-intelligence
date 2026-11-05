@@ -158,6 +158,29 @@ class Message(Base):
     conversation = relationship("Conversation", back_populates="messages")
 
 
+class RevokedToken(Base):
+    """JWT revocation list (Phase 3). A token is identified by its jti;
+    logout inserts its jti here, and get_current_user rejects it."""
+    __tablename__ = "revoked_tokens"
+    id = Column(Integer, primary_key=True)
+    jti = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PasswordResetToken(Base):
+    """Single-use password-reset token, stored as a SHA-256 hash (never
+    the raw token). Expires after 1 hour; marked used on success."""
+    __tablename__ = "password_reset_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Report(Base):
     __tablename__ = "reports"
     id = Column(Integer, primary_key=True)

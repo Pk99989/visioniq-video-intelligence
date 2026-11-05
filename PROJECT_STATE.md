@@ -1,7 +1,7 @@
-# PROJECT_STATE — VisionIQ v0.2.0
+# PROJECT_STATE — VisionIQ v0.3.0
 
-- **Current phase**: Phase 2 complete (real models + hardening), verified 2026-11-05.
-  v0.1.4 fixes (login 422 crash, video-page use() bug) are included.
+- **Current phase**: Phase 3 complete (advanced level), verified 2026-11-05.
+  Phase 2 (real YOLO/FastEmbed) and v0.2.1 (video-page polling) are included.
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnail/frames; OpenCV scene
   segmentation; fallback captions; hash embeddings; hybrid search;
@@ -19,16 +19,26 @@
   Celery/Redis worker (eager test + compose services); VLM client
   verified against a local mock Ollama/NIM server; benchmark suite
   with measured numbers in docs/benchmarks/2026-11-05.md.
+- **Phase 3 done (verified 2026-11-05, this machine, CPU only)**:
+  HTTP Range streaming (206) + signed stream URLs; clip retrieval
+  (ffmpeg, 0-2 s clip verified as real mp4); detections + analytics +
+  annotated frames; logout revocation + password reset (single-use
+  tokens); Alembic migration v2 (14 tables total); 10 backend tests
+  passed; frontend build passes (17 pages incl. /forgot).
 - **Pending features**: a real VLM model run end to end (Ollama
   llava:7b / qwen2-vl:7b on the user's RTX 3050 — documented, not run
   here); sentence-transformers path (code present, needs torch, not
   tested here); ultralytics .pt + ByteTrack path (code present, torch
   install stalled on this machine and was stopped — ONNX is the
-  tested path); Postgres live test of the Alembic migration (SQLite
+  tested path); Postgres live test of the Alembic migrations (SQLite
   verified; Postgres needs Docker, not available here); Qdrant live
   server test (in-memory verified; server needs Docker); e2e browser
-  tests; shadcn/ui full adoption; range/seek video streaming.
+  tests (Playwright, not run here); shadcn/ui full adoption.
 - **Files modified**: see git log (initial commit in this session).
+- **Tests executed (2026-11-05, Phase 3, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` → **10 passed** (7 Phase 1-2
+    + 3 Phase 3: range/signed streaming, clip/detections/analytics/
+    annotated, logout/reset).
 - **Tests executed (2026-11-05, Phase 2, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` → **7 passed** (2 Phase 1
     full-flow tests + 5 Phase 2 tests: VLM mock, Qdrant in-memory,
