@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API, api, getToken, Video } from "@/lib/api";
 import FrameImage from "@/components/FrameImage";
 import { Card, Empty, ErrorBox, Loading } from "@/components/ui";
@@ -9,10 +9,13 @@ type Caption = { id: number; timestamp_seconds: number; text: string; provider: 
 type Frame = { id: number; timestamp_seconds: number; scene_id: number | null; image_url: string };
 
 export default function VideoPage({ params, searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ t?: string }>;
+  params: { id: string }; searchParams: { t?: string };
 }) {
-  const { id } = use(params);
-  const sp = use(searchParams);
+  // Next 14 passes params/searchParams as plain objects, NOT Promises.
+  // The previous code used React's use() on them (a Next 15 pattern),
+  // which threw a client-side exception on the video page.
+  const { id } = params;
+  const sp = searchParams;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [video, setVideo] = useState<Video | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
