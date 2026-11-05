@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.2.1 — 2026-11-05 (video page auto-refresh)
+
+- Video page now polls every 3s while a video is processing, so scenes,
+  captions and frames appear as the pipeline writes them instead of
+  showing an empty Captions box if you opened the page early. The
+  pipeline writes scenes + frames first, captions only after detection,
+  so that order is what the empty box was.
+- Captions section now shows "No captions yet (video may still be
+  processing...)" instead of a blank box.
+
 ## v0.2.0 — 2026-11-05 (Phase 2: real models + hardening)
 
 - Real detection: YOLOv8n via onnxruntime (`yolov8n.onnx`, no torch).

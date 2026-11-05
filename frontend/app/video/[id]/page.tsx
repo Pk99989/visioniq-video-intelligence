@@ -25,12 +25,33 @@ export default function VideoPage({ params, searchParams }: {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Video>(`/api/v1/videos/${id}`).then(setVideo).catch((e) => setError(String(e.message)));
-    api<Scene[]>(`/api/v1/videos/${id}/scenes`).then(setScenes).catch(() => {});
-    api<Caption[]>(`/api/v1/videos/${id}/captions`).then(setCaptions).catch(() => {});
-    api<Frame[]>(`/api/v1/videos/${id}/frames`).then(setFrames).catch(() => {});
+    // The pipeline writes scenes + frames first, then captions (after
+    // detection), then sets status=ready. Opening the page mid-processing
+    // used to show scenes/frames but an empty Captions box forever,
+    // because nothing refetched. Poll until the video is ready.
+    let stopped = false;
+    const loadAll = () => {
+      api<Video>(`/api/v1/videos/${id}`).then((v) => { if (!stopped) setVideo(v); })
+        .catch((e) => setError(String(e.message)));
+      api<Scene[]>(`/api/v1/videos/${id}/scenes`).then((s) => { if (!stopped) setScenes(s); }).catch(() => {});
+      api<Caption[]>(`/api/v1/videos/${id}/captions`).then((c) => { if (!stopped) setCaptions(c); }).catch(() => {});
+      api<Frame[]>(`/api/v1/videos/${id}/frames`).then((f) => { if (!stopped) setFrames(f); }).catch(() => {});
+    };
+    loadAll();
     fetch(`${API}/api/v1/videos/${id}/stream`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then((r) => r.blob()).then((b) => setStreamUrl(URL.createObjectURL(b))).catch(() => {});
+      .then((r) => r.blob()).then((b) => { if (!stopped) setStreamUrl(URL.createObjectURL(b)); }).catch(() => {});
+    const timer = setInterval(() => {
+      // Stop polling once ready/failed; the video state drives this.
+      setVideo((v) => {
+        if (v && v.status !== "processing" && v.status !== "uploaded") {
+          clearInterval(timer);
+        } else {
+          loadAll();
+        }
+        return v;
+      });
+    }, 3000);
+    return () => { stopped = true; clearInterval(timer); };
   }, [id]);
 
   useEffect(() => {
@@ -57,6 +78,7 @@ export default function VideoPage({ params, searchParams }: {
       </Card>
       <Card>
         <h2 className="font-semibold">Captions</h2>
+        {captions.length === 0 && <Empty text="No captions yet (video may still be processing — this page refreshes automatically)." />}
         {captions.map((c) => (
           <p key={c.id} className="border-t py-1 text-sm">
             <button className="text-indigo-600" onClick={() => seek(c.timestamp_seconds)}>{c.timestamp_seconds.toFixed(1)}s</button>
