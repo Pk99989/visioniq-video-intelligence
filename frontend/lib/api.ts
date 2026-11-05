@@ -19,7 +19,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     let detail = res.statusText;
     try {
       const j = await res.json();
-      detail = j.detail || JSON.stringify(j);
+      const d = j.detail;
+      // FastAPI 422 detail is a list; stringify it so callers never
+      // receive an object/array they might try to render directly.
+      detail = Array.isArray(d)
+        ? d.map((x: any) => `${(x.loc || []).join(".")}: ${x.msg}`).join("; ")
+        : (d || JSON.stringify(j));
     } catch { /* keep statusText */ }
     throw new Error(`${res.status}: ${detail}`);
   }
