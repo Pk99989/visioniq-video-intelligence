@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.4.0 — 2026-11-06 (Phase 0 audit, Phase 1 real VLM, Phase 2 adaptive sampling, H1 security fix)
+
+- **Phase 0 audit:** `CODEBASE_AUDIT.md`, `TECHNICAL_DEBT.md`, `UPGRADE_PLAN.md` — read-only audit of v0.3.1 (11 backend tests + frontend build re-run). Found 6 High / 17 Medium / 14 Low debt items. Headline: password-reset token returned in API response (H1), search never uses Qdrant (H3), VLM was a client not an integration (H4), `create_all` vs Alembic conflict (H2).
+- **Phase 1 — real VLM end-to-end (verified with a real model):** `vlm.py` rewritten — structured JSON captions (description/objects/actions), retries with exponential backoff, per-attempt timeout, `/health/vlm` probe, structured inference logs, three honest caption tiers (`ollama` / `detection` / `fallback`). Moondream (1.86B) via Ollama 0.40.15 captioned a real bus frame on this CPU-only VM: provider=`ollama`, search "bus" 0.865. `llava:7b` remains the GPU-machine model for the user's RTX 3050. 6 mock tests + 1 real-model e2e test (`tests/test_vlm_e2e.py`, skipped unless `VISIONIQ_VLM_E2E=1`). Found + fixed: model-name matching must accept Ollama tags (`moondream` vs `moondream:latest`).
+- **Phase 2 — adaptive sampling + dedupe:** `video_processing.py` — adaptive fps (2.0 for short videos → 0.2 floor for long), histogram dedupe (keeps 1 frame per 2 s on static shots), scene merging on representative-frame similarity, representative (middle) frame used for captions. Benchmark: bus 10 s — 5 frames (was 10), 3.0 s (was 9.1 s), same labels; moving 15 s — 27/30 frames, 106 detections. See `docs/benchmarks/2026-11-06-phase2.md`.
+- **H1 security fix:** password-reset token is no longer returned in the API response by default — anyone could reset any account with no email access. Returned only with explicit `DEV_RETURN_RESET_TOKEN=1` and never when `ENV=production`. New `tests/test_security.py` (4 tests).
+- Full suite: **28 tests pass** (27 unit + 1 real-VLM e2e).
+
 ## v0.3.1 — 2026-11-06 (live infrastructure tests + privacy fix)
 
 - **Live Postgres verified:** Alembic migrations run against real

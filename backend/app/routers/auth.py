@@ -1,9 +1,11 @@
+import logging
 import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..models import PasswordResetToken, User
 from ..schemas import LoginIn, PasswordResetIn, PasswordResetRequestIn, RegisterIn, TokenOut, UserOut
@@ -11,6 +13,8 @@ from ..security import (
     create_token, decode_token, get_current_user, hash_password, hash_token,
     require_admin, revoke_token, verify_password,
 )
+
+logger = logging.getLogger("visioniq.auth")
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -55,17 +59,26 @@ def me(user: User = Depends(get_current_user)):
 @router.post("/password-reset-request")
 def password_reset_request(body: PasswordResetRequestIn, db: Session = Depends(get_db)):
     """Always returns 200 so an attacker cannot tell whether an email
-    is registered. In production the token must be emailed; VisionIQ
-    has no email service, so the token is returned in the response for
-    local testing — treat it like a password and do not share it."""
+    is registered. The reset token is NEVER returned in the response
+    unless the dev-only flag DEV_RETURN_RESET_TOKEN=1 is set (and ENV
+    is not production) — returning it would let anyone reset any
+    account's password with no email access (audit H1). Without the
+    flag, the token is created and stored hashed; a real deployment
+    must email it to the user (no email service is wired yet — the
+    token is then only usable by someone with direct DB access)."""
     user = db.query(User).filter_by(email=body.email).first()
     if user:
         raw = secrets.token_urlsafe(32)
         db.add(PasswordResetToken(user_id=user.id, token_hash=hash_token(raw),
                                   expires_at=datetime.utcnow() + timedelta(hours=1)))
         db.commit()
-        return {"detail": "If that email is registered, a reset token was created.",
-                "reset_token": raw, "expires_in_minutes": 60}
+        if settings.DEV_RETURN_RESET_TOKEN and settings.ENV != "production":
+            logger.warning("DEV ONLY: password-reset token returned in response "
+                           "for user_id=%s (DEV_RETURN_RESET_TOKEN=1)", user.id)
+            return {"detail": "If that email is registered, a reset token was created.",
+                    "reset_token": raw, "expires_in_minutes": 60}
+        logger.info("password-reset requested for user_id=%s; token created "
+                    "(not returned — no email service configured)", user.id)
     return {"detail": "If that email is registered, a reset token was created."}
 
 

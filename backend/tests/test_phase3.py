@@ -114,7 +114,7 @@ def test_clip_detections_analytics_annotated():
     assert len(r.content) > 1000
 
 
-def test_logout_revocation_and_password_reset():
+def test_logout_revocation_and_password_reset(monkeypatch):
     headers, token = _auth("p3d@test.com")
     # Token works
     assert client.get("/api/v1/videos", headers=headers).status_code == 200
@@ -122,7 +122,11 @@ def test_logout_revocation_and_password_reset():
     r = client.post("/api/v1/auth/logout", headers=headers)
     assert r.status_code == 200, r.text
     assert client.get("/api/v1/videos", headers=headers).status_code == 401
-    # Password reset: request -> reset -> new password works, old fails
+    # Password reset: request -> reset -> new password works, old fails.
+    # The token is returned ONLY with the dev flag on (H1 fix); without
+    # it the endpoint must not leak the token (see test_security.py).
+    from app.config import settings
+    monkeypatch.setattr(settings, "DEV_RETURN_RESET_TOKEN", True)
     r = client.post("/api/v1/auth/password-reset-request", json={"email": "p3d@test.com"})
     assert r.status_code == 200 and "reset_token" in r.json(), r.text
     reset_token = r.json()["reset_token"]

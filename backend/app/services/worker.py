@@ -3,6 +3,7 @@
 recorded in processing_jobs so a crash leaves a recoverable record
 instead of a silently stuck video."""
 import json
+import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,8 @@ from ..config import settings
 from ..database import SessionLocal
 from ..models import Caption, Detection, Frame, ProcessingJob, Scene, Video
 from . import detection, embeddings, retrieval, video_processing, vlm
+
+logger = logging.getLogger("visioniq.worker")
 
 
 def _video_dir(video: Video) -> Path:
@@ -56,7 +59,12 @@ def process_video(video_id: int) -> None:
         video.thumbnail_path = str(video_processing.make_thumbnail(
             Path(video.file_path), vdir / "thumbnail.jpg"))
 
-        frames = video_processing.extract_frames(Path(video.file_path), vdir / "frames")
+        frames, fps_used = video_processing.extract_frames(
+            Path(video.file_path), vdir / "frames", duration_seconds=meta["duration_seconds"])
+        frames, dropped = video_processing.dedupe_frames(frames)
+        logger.info("video=%s duration=%.1fs fps=%.2f frames_extracted=%d deduped=%d kept=%d",
+                    video.id, meta["duration_seconds"], fps_used,
+                    len(frames) + dropped, dropped, len(frames))
         scenes = video_processing.segment_scenes(frames)
         scene_rows = {}
         for s in scenes:
@@ -78,7 +86,10 @@ def process_video(video_id: int) -> None:
         yolo_available = detection.provider_status()["available"]
         for s in scenes:
             scene_row = scene_rows[s["index"]]
-            first_i, first_row = next(((i, r) for i, r in frame_rows if i in s["frame_indices"]), (0, frame_rows[0][1]))
+            # Caption the scene's representative (middle) frame, not the
+            # first frame of the cut, which is often a fade or blur.
+            rep_i = video_processing.representative_index(s)
+            rep_row = next((r for i, r in frame_rows if i == rep_i), frame_rows[0][1])
             det_labels: list[str] = []
             if yolo_available:
                 for i, row in frame_rows:
@@ -90,9 +101,9 @@ def process_video(video_id: int) -> None:
                                          label=d["label"], confidence=d["confidence"],
                                          x1=d["x1"], y1=d["y1"], x2=d["x2"], y2=d["y2"],
                                          timestamp_seconds=row.timestamp_seconds))
-            caption_text, provider = vlm.caption_scene(s, det_labels, first_row.file_path)
-            db.add(Caption(video_id=video.id, frame_id=first_row.id, scene_id=scene_row.id,
-                           timestamp_seconds=first_row.timestamp_seconds,
+            caption_text, provider = vlm.caption_scene(s, det_labels, rep_row.file_path)
+            db.add(Caption(video_id=video.id, frame_id=rep_row.id, scene_id=scene_row.id,
+                           timestamp_seconds=rep_row.timestamp_seconds,
                            text=caption_text, provider=provider, model=settings.VLM_MODEL or None))
             vec, emb_provider = embeddings.embed(caption_text)
             for i, row in frame_rows:

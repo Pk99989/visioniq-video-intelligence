@@ -13,9 +13,9 @@ from .config import settings
 from .database import SessionLocal, init_db
 from .routers import auth, search_chat_reports, videos
 from .services import detection, worker
-from .services.vlm import provider_name
+from .services.vlm import check_health as vlm_health, provider_name
 
-app = FastAPI(title="VisionIQ", version="0.3.1",
+app = FastAPI(title="VisionIQ", version="0.4.0",
               description="Multimodal Video Intelligence and Agentic Search Platform (independent implementation, inspired by NVIDIA VSS architecture).")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -49,10 +49,18 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.3.1", "vlm_provider": provider_name(),
+    return {"status": "ok", "version": "0.4.0", "vlm_provider": provider_name(),
             "embedding_provider": settings.EMBEDDING_PROVIDER,
             "worker_mode": settings.WORKER_MODE,
             "detection": detection.provider_status()}
+
+
+@app.get("/health/vlm")
+def health_vlm():
+    """Live VLM probe (Phase 1): pings the configured model server and
+    reports whether the model is actually reachable. No auth: it reveals
+    no data, only the provider/model/status."""
+    return vlm_health()
 
 
 app.include_router(auth.router)
