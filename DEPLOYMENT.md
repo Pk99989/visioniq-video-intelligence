@@ -90,7 +90,7 @@ ollama pull llava:7b        # or: ollama pull qwen2-vl:7b
 
 **Migrations (Alembic):**
 ```
-cd backend && alembic upgrade head     # 12 tables; downgrade base reverses it
+cd backend && alembic upgrade head     # 16 app tables + alembic_version; downgrade base reverses it
 ```
 The app also runs migrations itself at startup, and the Docker
 entrypoint (`backend/entrypoint.sh`) runs them before the server —

@@ -101,6 +101,7 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix (medium effort, needs care):** short-lived access token + httpOnly refresh cookie, or at minimum a silent re-login prompt before expiry. Do not attempt without the H5 JWT work.
 
 ### M14. Docs are stale in at least 8 places (see audit §11)
+- **Status: FIXED in v0.15.0 (Phase 13, 2026-11-06).** README rewritten; ARCHITECTURE (FastEmbed/Qdrant-first/zones/observability), DATABASE_SCHEMA (16 tables, Alembic v1–v5), API_DOCUMENTATION (regenerated from the live OpenAPI spec, 44 paths), DEPLOYMENT (16 tables), TASK_TRACKER (rows 10/2) all corrected against the code. TESTING.md and SECURITY.md were already rewritten in Phases 11/9; PROJECT_STATE.md is refreshed at every version. Remaining risk: docs drift again as code changes — API_DOCUMENTATION.md now says how to regenerate it from the spec.
 - **Where:** `README.md`, `PROJECT_STATE.md`, `ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `DEPLOYMENT.md`, `TESTING.md`, `SECURITY.md`.
 - **Fix:** single docs pass as part of Phase 13; add a CI check that fails if `PROJECT_STATE.md` still contains the phrases that are known-stale after each release (cheap grep guard), or at least update the docs in the same commit as the feature.
 

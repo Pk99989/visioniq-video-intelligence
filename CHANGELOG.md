@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## v0.15.0 — 2026-11-06 (Phase 13 GitHub + docs)
+
+- **README rewritten** for v0.14.0: what it does, a measured-results
+  table (tests 108 pass, RAG eval R@5 0.66/MRR 0.48/faithfulness 1.0,
+  detection P/R, adaptive sampling, embedding benchmark, real-VLM
+  e2e), honest fallbacks (llava:7b not yet run anywhere, .pt/ByteTrack
+  untested, reranker off by default, per-provider floor open), and
+  the Docker-on-this-VM limitation. No invented numbers; every
+  figure points at `docs/benchmarks/` or `TESTING.md`.
+- **Doc drift fixed (M14, audit §11):** ARCHITECTURE.md (FastEmbed
+  is the real model, hash is the fallback; Qdrant-first search;
+  zones; observability); DATABASE_SCHEMA.md (all 16 tables with
+  real columns, Qdrant payload indexes, Alembic-only migrations
+  v1–v5); API_DOCUMENTATION.md (regenerated from the live OpenAPI
+  spec — 44 paths, auth noted per route, signed-token routes
+  explained); DEPLOYMENT.md (16 app tables + alembic_version);
+  TASK_TRACKER.md (row 10 superseded by row 20, row 2 updated to
+  the 108-test suite).
+- **GitHub readiness checked:** .gitignore covers .env/.venv/
+  node_modules/.next/storage/*.db/*.onnx/*.pt/.coverage; no .env,
+  .db or model file is tracked; no secrets in history (the only
+  JWT_SECRET hits are doc examples and test fixtures); largest
+  tracked file is 148 KB. The repo is ready to push — the only
+  missing step is the user's `gh auth login` (see DEPLOYMENT.md).
+
 ## v0.14.0 — 2026-11-06 (Phase 12 production engineering)
 
 - **Non-root images (M15 fixed):** backend runs as the `visioniq` user — the entrypoint runs as root only to wait for services, apply migrations and fix the storage volume's ownership (named volumes from pre-0.14 root images are root-owned), then drops to `visioniq` via runuser. Frontend is a multi-stage build (deps/builder/runner) running as the built-in `node` user.

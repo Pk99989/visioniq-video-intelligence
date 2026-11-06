@@ -1,15 +1,13 @@
 # PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 12 complete (production engineering),
-  verified 2026-11-06 — with one honest exception: Docker containers
-  cannot run on this VM (the kernel blocks iptables, bridge creation
-  and network namespaces), so the clean-checkout `docker compose up`
-  step is pending on the user's Docker Desktop machine. Phases 0–11
-  done: audit, real VLM (moondream, CPU), adaptive sampling, CV
-  calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
-  event engine, DB/infra hardening, frontend upgrades, security
-  hardening, observability, test expansion. Next: Phase 13 GitHub +
-  docs (needs the user's `gh auth login`).
+- **Current phase**: Phase 13 complete (GitHub + docs), verified
+  2026-11-06. The repo is ready to push; the only missing step is
+  the user's `gh auth login`. Phases 0–12 done: audit, real VLM
+  (moondream, CPU), adaptive sampling, CV calibration, Qdrant-first
+  RAG + 54-question eval, agent + MCP, event engine, DB/infra
+  hardening, frontend upgrades, security hardening, observability,
+  test expansion, production engineering. Next: Phase 14 benchmarks
+  + v1.0.0 release.
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -56,6 +54,12 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v0.15.0 (Phase 13 GitHub + docs)**: README rewritten with
+  only measured numbers; audit §11 doc drift fixed (ARCHITECTURE,
+  DATABASE_SCHEMA, API_DOCUMENTATION regenerated from the live
+  OpenAPI spec — 44 paths, DEPLOYMENT, TASK_TRACKER); git hygiene
+  verified (no secrets tracked, largest file 148 KB). The repo is
+  ready to push — blocked only on the user's `gh auth login`.
 - **v0.14.0 (Phase 12 production engineering)**: non-root Docker
   images (backend `visioniq` user via entrypoint privilege drop,
   frontend multi-stage as `node`); healthchecks on all services;
@@ -124,6 +128,18 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v0.15.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **108 passed, 1 skipped** (re-run at close-out; docs + version
+    bump only).
+  - Frontend: `npm run build` → compiled successfully, **16 routes**
+    (15 pages + not-found) — the README's "16 pages" was corrected
+    to this.
+  - API doc: regenerated from the live OpenAPI spec — **44 paths**,
+    auth noted per route.
+  - Git hygiene: .gitignore covers .env/.venv/node_modules/.next/
+    storage/*.db/*.onnx/*.pt/.coverage; no .env/.db/model file
+    tracked; no secrets in history; largest tracked file 148 KB.
 - **Tests executed (2026-11-06, v0.14.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **108 passed, 1 skipped** (re-run at close-out; version bump only).
@@ -236,10 +252,11 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 13: GitHub + docs (needs the user's `gh auth login`;
-     fix the audit §11 doc drift / M14; README rewrite with only
-     verified numbers/screenshots).
-  2. On the user's WSL machine: verify the clean-checkout start —
+  1. Phase 14: benchmark suite consolidation (`BENCHMARKS.md`) +
+     v1.0.0 release + final report + zip.
+  2. On the user's machine: `gh auth login`, create the GitHub repo
+     and push (`git push origin main --tags`).
+  3. On the user's WSL machine: verify the clean-checkout start —
      `docker compose -f docker-compose.laptop.yml up --build -d`,
      all services healthy, upload a real video, confirm the flow.
-  3. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.
+  4. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.
