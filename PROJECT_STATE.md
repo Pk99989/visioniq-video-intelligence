@@ -1,13 +1,7 @@
 # PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 13 complete (GitHub + docs), verified
-  2026-11-06. The repo is ready to push; the only missing step is
-  the user's `gh auth login`. Phases 0–12 done: audit, real VLM
-  (moondream, CPU), adaptive sampling, CV calibration, Qdrant-first
-  RAG + 54-question eval, agent + MCP, event engine, DB/infra
-  hardening, frontend upgrades, security hardening, observability,
-  test expansion, production engineering. Next: Phase 14 benchmarks
-  + v1.0.0 release.
+- **Current phase**: **v1.0.0 RELEASED** (2026-11-06). All 15 phases
+  (0–14) are done. The final status report is below.
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -54,6 +48,16 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v1.0.0 (Phase 14 benchmarks + release)**: BENCHMARKS.md
+  consolidates every measured number; embedding, detection and
+  sampling benchmarks re-run and reproduced on the release build;
+  real-VLM e2e + RAG eval test re-run and passed (R@5 0.66, MRR 0.47,
+  faithfulness 1.0, relevance 0.95, negatives 0.38 — within the
+  ±0.05 run variance). **BUG FIXED:** detection.py `BASE_DIR`
+  resolved to `backend/app/` instead of `backend/`, so YOLO weights
+  were found only when the process cwd was `backend/` — fixed with
+  a regression test. **109 backend tests pass** (+ 10 Vitest + 1
+  Playwright e2e re-verified on the release build, 16.24 s).
 - **v0.15.0 (Phase 13 GitHub + docs)**: README rewritten with
   only measured numbers; audit §11 doc drift fixed (ARCHITECTURE,
   DATABASE_SCHEMA, API_DOCUMENTATION regenerated from the live
@@ -128,6 +132,27 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v1.0.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **109 passed, 1 skipped** (the vlm RAG eval skips without
+    VISIONIQ_VLM_E2E=1).
+  - Real-VLM + RAG eval: `VISIONIQ_VLM_E2E=1 pytest
+    tests/test_vlm_e2e.py tests/test_rag_eval.py -q` → **2 passed**
+    (4m38s; RAG R@1 0.32, R@5 0.66, P@5 0.16, MRR 0.47, latency
+    203.2 ms, faithfulness 1.0, relevance 0.95, negatives 0.38).
+  - E2E browser: `VISIONIQ_E2E=1 pytest tests/test_e2e_browser.py -q`
+    → **1 passed** (16.24 s) against the release build (backend
+    :8001 v1.0.0 + frontend :3000 rebuilt with the right API URL —
+    the first attempt failed because a Phase 13 route-count build
+    had overwritten the frontend with the default :8000 API URL;
+    rebuilt correctly and it passed).
+  - Frontend: `npm test` (Vitest) → **10 passed**; `npm run build`
+    (Next 14.2.35) → **compiled successfully, 16 routes**.
+  - Benchmarks re-run on the release build: `scripts/benchmark.py`
+    (hash R@1 0.67 / R@5 0.92 / MRR 0.76; bus P/R 0.80/0.80,
+    traffic 0.67/0.50 — all identical to baseline) and
+    `scripts/phase2_bench.py` (bus 2.6 s / 5 frames / 25 detections;
+    moving 10.4 s / 27 frames / 106 detections).
 - **Tests executed (2026-11-06, v0.15.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **108 passed, 1 skipped** (re-run at close-out; docs + version
@@ -252,11 +277,13 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 14: benchmark suite consolidation (`BENCHMARKS.md`) +
-     v1.0.0 release + final report + zip.
-  2. On the user's machine: `gh auth login`, create the GitHub repo
+  1. On the user's machine: `gh auth login`, create the GitHub repo
      and push (`git push origin main --tags`).
-  3. On the user's WSL machine: verify the clean-checkout start —
+  2. On the user's WSL machine: verify the clean-checkout start —
      `docker compose -f docker-compose.laptop.yml up --build -d`,
      all services healthy, upload a real video, confirm the flow.
-  4. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.
+  3. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.
+  4. Open follow-ups (not blockers for v1.0.0): per-provider
+     evidence-floor calibration; sentence-transformers /
+     ultralytics .pt paths (need torch); Prometheus/Grafana stack
+     run + dashboard screenshot (needs Docker); shadcn/ui adoption.

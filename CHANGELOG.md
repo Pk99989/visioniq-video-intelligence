@@ -1,5 +1,36 @@
 # CHANGELOG
 
+## v1.0.0 — 2026-11-06 (Phase 14 benchmarks + release)
+
+- **BENCHMARKS.md** consolidates every measured number (embeddings,
+  detection, adaptive sampling, real VLM, 54-question RAG eval,
+  profiling) with method, machine and date; the dated per-phase
+  notes in `docs/benchmarks/` remain the raw records.
+- **Re-verified for the release:** embedding benchmark (hash R@1
+  0.67 / R@5 0.92 / MRR 0.76 — identical), detection benchmark (bus
+  P/R 0.80/0.80, traffic 0.67/0.50 — identical), Phase 2 sampling
+  (bus 2.6 s, moving 10.4 s — slightly faster, same frame counts),
+  real-VLM e2e + RAG eval test (both pass; RAG R@5 0.66, MRR 0.47,
+  faithfulness 1.0, relevance 0.95, negatives 0.38 — within the
+  documented ±0.05 run variance).
+- **BUG FIXED:** `BASE_DIR` in `backend/app/services/detection.py`
+  resolved to `backend/app/` instead of `backend/`, so YOLO weights
+  were found only when the process cwd happened to be `backend/`
+  (pytest, Docker) and not from the repo root — `scripts/benchmark.py`
+  reported detection "unavailable" on a machine with the weights
+  installed. Fixed to `parent.parent.parent`, with a regression
+  test that checks `provider_status()` from a different cwd.
+  Full suite: **109 backend tests pass** (+ 10 Vitest + 1 Playwright
+  e2e re-verified on the release build).
+- **v1.0.0 final delivery:** IMPLEMENTED (Phases 0–14), TESTED
+  (109 backend + 10 Vitest + 1 e2e + 1 real-VLM e2e + 1 RAG eval),
+  VERIFIED (live Postgres/Qdrant/Redis/Celery, real VLM, browser
+  e2e), BENCHMARKED (see BENCHMARKS.md), DEPLOYED (single-command
+  Docker start — verified for syntax and entrypoint here; the
+  clean-checkout container run is pending on the user's Docker
+  Desktop machine, as documented since Phase 12). See
+  PROJECT_STATE.md for the full status report.
+
 ## v0.15.0 — 2026-11-06 (Phase 13 GitHub + docs)
 
 - **README rewritten** for v0.14.0: what it does, a measured-results

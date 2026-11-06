@@ -169,3 +169,15 @@ def test_provider_status_reports_calibration_and_execution_provider():
     assert status["nms"] == settings.YOLO_NMS
     assert status["execution_provider"] in ("CPUExecutionProvider",
                                             "CUDAExecutionProvider"), status
+
+
+@needs_weights
+def test_weights_found_regardless_of_cwd(monkeypatch, tmp_path):
+    """Regression (v1.0.0): BASE_DIR in detection.py used to resolve
+    to backend/app instead of backend/, so weights were found only
+    when the process cwd happened to be backend/ (pytest, Docker)
+    and not from the repo root (scripts/benchmark.py)."""
+    monkeypatch.chdir(tmp_path)
+    status = detection.provider_status()
+    assert status["available"] is True, status
+    assert status["model"].endswith("yolov8n.onnx"), status

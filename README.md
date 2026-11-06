@@ -11,7 +11,7 @@ answers questions with timestamp citations, summarises long videos
 hierarchically, watches zones for events, and generates JSON/PDF
 reports — through a deterministic agent and an MCP tool server.
 
-**Current version: v0.14.0** (2026-11-06). Phases 0–12 of the upgrade
+**Current version: v1.0.0** (2026-11-06). All 15 phases (0–14) of the upgrade
 plan are done; see `PROJECT_STATE.md` for the full status and
 `CHANGELOG.md` for what each version changed. Every number in this
 file is measured — the method and the raw results live in

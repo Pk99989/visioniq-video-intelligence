@@ -18,7 +18,10 @@ from pathlib import Path
 
 import numpy as np
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
+BASE_DIR = Path(__file__).resolve().parent.parent.parent  # backend/
+# (detection.py lives in backend/app/services/ — parent.parent is
+# backend/app, NOT backend. The old parent.parent made YOLO weights
+# findable only when the process cwd happened to be backend/.)
 
 COCO_LABELS = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",

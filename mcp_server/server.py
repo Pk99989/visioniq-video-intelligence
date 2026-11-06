@@ -36,7 +36,7 @@ TOOLS = agent.TOOLS
 _TOOL_NAMES = {t["name"] for t in TOOLS}
 _REQUIRED = {t["name"]: set(t.get("inputSchema", {}).get("required", []))
              for t in TOOLS}
-VERSION = "0.15.0"
+VERSION = "1.0.0"
 
 
 def _scoped_user_id(user):
