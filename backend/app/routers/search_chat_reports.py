@@ -23,7 +23,8 @@ def search(body: SearchIn, user: User = Depends(get_current_user), db: Session =
         if not video or not video_visible_to(video, user):
             raise HTTPException(404, "Video not found")
     return search_frames(db, body.query, video_id=body.video_id,
-                         top_k=body.top_k, min_score=body.min_score)
+                         top_k=body.top_k, min_score=body.min_score,
+                         user_id=user.id if user.role != "admin" else None)
 
 
 @router.get("/agent/tools")
@@ -48,7 +49,8 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         db.add(conv)
         db.flush()
     db.add(Message(conversation_id=conv.id, role="user", content=body.question))
-    result = agent.answer_question(db, body.question, video_id=body.video_id)
+    result = agent.answer_question(db, body.question, video_id=body.video_id,
+                                   user_id=user.id if user.role != "admin" else None)
     import json
 
     db.add(Message(conversation_id=conv.id, role="assistant", content=result["answer"],

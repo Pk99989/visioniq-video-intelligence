@@ -11,6 +11,18 @@ citations, summarises long videos hierarchically, evaluates configurable
 event rules, and generates JSON/PDF reports — through a LangGraph-shaped
 agent and an MCP tool server.
 
+## What is new in v0.3.1 — live infrastructure + privacy fix (verified, 2026-11-06)
+
+- **Live servers tested:** Postgres 16.15 migrations, Qdrant 1.20.0
+  server, Redis 7.0.15 + Celery worker processing a real upload —
+  all verified on CPU without Docker (details in CHANGELOG.md).
+- **Privacy fix:** search, chat and MCP tools are now scoped to the
+  logged-in user's own videos (admins see all). Previously a search
+  could return another user's captions.
+- **Browser tests:** Playwright e2e test covers register → upload →
+  search → clip download → logout against the live app
+  (`VISIONIQ_E2E=1 pytest tests/test_e2e_browser.py`).
+
 ## What is new in v0.3.0 — Phase 3, advanced level (verified, 2026-11-05)
 
 - **Seekable video:** HTTP Range streaming (206) with a 5-minute signed

@@ -19,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from app.database import SessionLocal  # noqa: E402
-from app.security import decode_token  # noqa: E402
+from app.models import User, Video  # noqa: E402
+from app.security import decode_token, video_visible_to  # noqa: E402
 from app.services import agent  # noqa: E402
 from app.services.retrieval import search_frames  # noqa: E402
 from app.services.summarization import summarize_video  # noqa: E402
@@ -27,19 +28,34 @@ from app.services.summarization import summarize_video  # noqa: E402
 TOOLS = agent.TOOLS
 
 
-def call_tool(name: str, args: dict):
+def _scoped_user_id(user):
+    """Non-admin callers only ever see their own videos; admins see all."""
+    return user.id if user is not None and user.role != "admin" else None
+
+
+def call_tool(name: str, args: dict, user=None):
+    """user=None means unscoped (stdio transport: the local operator runs
+    it on their own machine with direct DB access). The HTTP transport
+    always passes the JWT-authenticated user, so one tenant can never
+    read another tenant's captions, clips or events through MCP."""
     db = SessionLocal()
     try:
+        uid = _scoped_user_id(user)
         if name == "video_search":
             return search_frames(db, args["query"], video_id=args.get("video_id"),
-                                 top_k=int(args.get("top_k", 10)))
+                                 top_k=int(args.get("top_k", 10)), user_id=uid)
         if name == "video_qa":
-            return agent.answer_question(db, args["question"], video_id=args.get("video_id"))
+            return agent.answer_question(db, args["question"], video_id=args.get("video_id"),
+                                         user_id=uid)
         if name == "video_summarize":
+            video = db.get(Video, int(args["video_id"]))
+            if not video or (user is not None and not video_visible_to(video, user)):
+                return {"error": "Video not found"}
             return summarize_video(db, int(args["video_id"]),
                                    length=args.get("length", "medium"))
         if name == "clip_retrieval":
-            hits = search_frames(db, args["query"], video_id=args.get("video_id"), top_k=5)
+            hits = search_frames(db, args["query"], video_id=args.get("video_id"), top_k=5,
+                                 user_id=uid)
             return [{"video_id": h["video_id"],
                      "start_seconds": max(0.0, h["timestamp_seconds"] - 2),
                      "end_seconds": h["timestamp_seconds"] + 2,
@@ -48,6 +64,8 @@ def call_tool(name: str, args: dict):
             from app.models import Event
 
             q = db.query(Event)
+            if uid is not None:
+                q = q.join(Video, Event.video_id == Video.id).filter(Video.owner_id == uid)
             if args.get("video_id"):
                 q = q.filter_by(video_id=int(args["video_id"]))
             return [{"timestamp_seconds": e.timestamp_seconds, "title": e.title,
@@ -94,8 +112,17 @@ def serve_http(port: int) -> None:
     def _auth(authorization: str | None):
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(401, "Missing bearer token")
-        if decode_token(authorization[7:]) is None:
+        data = decode_token(authorization[7:])
+        if not data:
             raise HTTPException(401, "Invalid token")
+        db = SessionLocal()
+        try:
+            user = db.get(User, int(data["sub"]))
+        finally:
+            db.close()
+        if not user:
+            raise HTTPException(401, "Invalid token")
+        return user
 
     @app.get("/tools")
     def tools(authorization: str | None = Header(default=None)):
@@ -104,8 +131,8 @@ def serve_http(port: int) -> None:
 
     @app.post("/tools/call")
     def call(body: dict, authorization: str | None = Header(default=None)):
-        _auth(authorization)
-        return call_tool(body["name"], body.get("arguments", {}))
+        user = _auth(authorization)
+        return call_tool(body["name"], body.get("arguments", {}), user=user)
 
     uvicorn.run(app, host="0.0.0.0", port=port)
 

@@ -4,12 +4,13 @@ combined score, sorted descending. Qdrant is optional: when QDRANT_URL is
 set and qdrant-client is installed, vectors are also upserted there;
 the SQLite/JSON vectors remain the laptop fallback and the source of
 truth for citations (video_id, frame_id, timestamp)."""
+import os
 import re
 
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Caption, Detection, Frame
+from ..models import Caption, Detection, Frame, Video
 from .embeddings import cosine, embed
 
 
@@ -21,9 +22,16 @@ def _keyword_score(query: str, text: str) -> float:
     return len(qt & tt) / len(qt)
 
 
-def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_score: float = 0.0):
+def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_score: float = 0.0,
+                  user_id=None):
+    """Search captions across videos. When user_id is given, only that
+    user's own videos are searched — without it, one user could read
+    another user's video captions, video ids and frame ids through
+    search (the /search endpoint previously passed no owner filter)."""
     qvec, _ = embed(query)
     q = db.query(Caption).join(Frame, Caption.frame_id == Frame.id)
+    if user_id is not None:
+        q = q.join(Video, Caption.video_id == Video.id).filter(Video.owner_id == user_id)
     if video_id:
         q = q.filter(Caption.video_id == video_id)
     scored = []
@@ -59,7 +67,28 @@ def get_qdrant_client():
 
     url = settings.QDRANT_URL
     if url not in _qdrant_clients:
-        _qdrant_clients[url] = QdrantClient(":memory:") if url == ":memory:" else QdrantClient(url=url)
+        if url == ":memory:":
+            _qdrant_clients[url] = QdrantClient(":memory:")
+        else:
+            # qdrant-client builds its httpx client at construction, and
+            # httpx chokes on bracketed IPv6 entries in this VM's NO_PROXY
+            # list (InvalidURL: Invalid port ':1]') — same workaround as
+            # embeddings.py. A plain localhost NO_PROXY is all it needs;
+            # restore the originals afterwards.
+            old_no_proxy, old_no_proxy_l = os.environ.get("NO_PROXY"), os.environ.get("no_proxy")
+            os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+            os.environ["no_proxy"] = "localhost,127.0.0.1"
+            try:
+                _qdrant_clients[url] = QdrantClient(url=url)
+            finally:
+                if old_no_proxy is None:
+                    os.environ.pop("NO_PROXY", None)
+                else:
+                    os.environ["NO_PROXY"] = old_no_proxy
+                if old_no_proxy_l is None:
+                    os.environ.pop("no_proxy", None)
+                else:
+                    os.environ["no_proxy"] = old_no_proxy_l
     return _qdrant_clients[url]
 
 

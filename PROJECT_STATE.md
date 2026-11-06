@@ -1,6 +1,7 @@
-# PROJECT_STATE — VisionIQ v0.3.0
+# PROJECT_STATE — VisionIQ v0.3.1
 
-- **Current phase**: Phase 3 complete (advanced level), verified 2026-11-05.
+- **Current phase**: Phase 3 complete (advanced level), verified 2026-11-05;
+  v0.3.1 live-infrastructure tests + privacy fix verified 2026-11-06.
   Phase 2 (real YOLO/FastEmbed) and v0.2.1 (video-page polling) are included.
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnail/frames; OpenCV scene
@@ -25,16 +26,31 @@
   annotated frames; logout revocation + password reset (single-use
   tokens); Alembic migration v2 (14 tables total); 10 backend tests
   passed; frontend build passes (17 pages incl. /forgot).
+- **v0.3.1 done (verified 2026-11-06, this machine, CPU only, no Docker)**:
+  live Postgres 16.15 (Alembic upgrade/downgrade/upgrade, 15 tables);
+  live Qdrant 1.20.0 server (collection + upsert + search, bus 1.000);
+  live Redis 7.0.15 + Celery worker (real upload processed in 9.1 s,
+  50 detections, 10 Qdrant points); Playwright e2e browser test
+  (register → upload → search 0.847 → clip download → logout, passed);
+  privacy fix for cross-user search/chat/MCP leak + regression test
+  (11 backend tests passed + 1 e2e passed).
 - **Pending features**: a real VLM model run end to end (Ollama
   llava:7b / qwen2-vl:7b on the user's RTX 3050 — documented, not run
   here); sentence-transformers path (code present, needs torch, not
   tested here); ultralytics .pt + ByteTrack path (code present, torch
   install stalled on this machine and was stopped — ONNX is the
-  tested path); Postgres live test of the Alembic migrations (SQLite
-  verified; Postgres needs Docker, not available here); Qdrant live
-  server test (in-memory verified; server needs Docker); e2e browser
-  tests (Playwright, not run here); shadcn/ui full adoption.
+  tested path); shadcn/ui full adoption.
 - **Files modified**: see git log (initial commit in this session).
+- **Tests executed (2026-11-06, v0.3.1, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` → **11 passed** (10 Phase 1-3
+    + 1 privacy: two users, search/chat never leak across users).
+  - E2E browser: `VISIONIQ_E2E=1 pytest tests/test_e2e_browser.py -q`
+    → **1 passed** (Chromium vs live frontend + backend + Celery
+    worker: register → upload → ready → search "bus" 0.847 →
+    clip download mp4 → sign out).
+  - Live infra: Postgres 16.15 migrations (15 tables, up/down/up);
+    Qdrant 1.20.0 server upsert/search; Redis 7.0.15 + Celery worker
+    processed a real upload in 9.1 s (50 detections).
 - **Tests executed (2026-11-05, Phase 3, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` → **10 passed** (7 Phase 1-2
     + 3 Phase 3: range/signed streaming, clip/detections/analytics/

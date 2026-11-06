@@ -16,7 +16,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Event
+from ..models import Event, Video
 from .retrieval import search_frames
 from .summarization import summarize_video
 
@@ -42,7 +42,10 @@ def _llm_synthesize(question: str, evidence: list[dict]) -> str | None:
         return None
 
 
-def answer_question(db: Session, question: str, video_id=None) -> dict:
+def answer_question(db: Session, question: str, video_id=None, user_id=None) -> dict:
+    """Evidence-grounded Q&A. user_id scopes retrieval to that user's own
+    videos (None = no scoping, used only by local stdio MCP use); the
+    chat endpoint passes the logged-in user, admins pass None."""
     q = question.lower()
     if "summar" in q:
         if not video_id:
@@ -55,6 +58,8 @@ def answer_question(db: Session, question: str, video_id=None) -> dict:
                 "confidence": "medium" if s["scene_count"] else "low"}
     if any(w in q for w in ("event", "alert", "incident")):
         query = db.query(Event)
+        if user_id is not None:
+            query = query.join(Video, Event.video_id == Video.id).filter(Video.owner_id == user_id)
         if video_id:
             query = query.filter_by(video_id=video_id)
         events = query.order_by(Event.timestamp_seconds).limit(20).all()
@@ -68,7 +73,7 @@ def answer_question(db: Session, question: str, video_id=None) -> dict:
         return {"answer": "Events found:\n" + "\n".join(lines), "citations": cites,
                 "tool": "events", "confidence": "high"}
     if "clip" in q:
-        hits = search_frames(db, question, video_id=video_id, top_k=5)
+        hits = search_frames(db, question, video_id=video_id, top_k=5, user_id=user_id)
         clips = [{"video_id": h["video_id"], "start_seconds": max(0.0, h["timestamp_seconds"] - 2),
                   "end_seconds": h["timestamp_seconds"] + 2, "caption": h["caption"]} for h in hits]
         return {"answer": f"Found {len(clips)} clip(s) matching the query.",
@@ -76,7 +81,7 @@ def answer_question(db: Session, question: str, video_id=None) -> dict:
     # Agent Q&A uses a stricter floor than the raw search API: hash
     # embeddings score unrelated text around 0.30, so <0.45 means "no
     # evidence" rather than a confident-sounding guess.
-    hits = search_frames(db, question, video_id=video_id, top_k=5, min_score=0.45)
+    hits = search_frames(db, question, video_id=video_id, top_k=5, min_score=0.45, user_id=user_id)
     if not hits:
         return {"answer": "No video evidence was retrieved for this question, so I cannot answer "
                 "it from the video library. Try a different query or process more video.",
