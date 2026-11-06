@@ -1,7 +1,10 @@
+import logging
 import re
 import shutil
 from collections import Counter
 from pathlib import Path
+
+logger = logging.getLogger("visioniq.videos")
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -33,6 +36,14 @@ def upload_video(background: BackgroundTasks, title: str = Form(...), file: Uplo
     ext = Path(file.filename or "").suffix.lower().lstrip(".")
     if ext not in settings.ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"Unsupported format '.{ext}'. Allowed: {sorted(settings.ALLOWED_EXTENSIONS)}")
+    # Phase 9: magic-byte sniffing — the extension is user-controlled,
+    # so the first bytes must match the container it claims to be.
+    # mp4/mov: "....ftyp" at offset 4; webm/mkv: EBML header 1A 45 DF A3;
+    # avi: "RIFF" + "AVI " at offset 8. A renamed .txt/.zip is rejected
+    # before anything is written to disk.
+    head = file.file.read(12)
+    file.file.seek(0)
+    _check_magic_bytes(ext, head)
     # Stream to disk with a hard size cap (never trust Content-Length alone).
     video = Video(owner_id=user.id, title=title, original_filename=file.filename,
                   file_path="", file_size_bytes=0)
@@ -52,12 +63,46 @@ def upload_video(background: BackgroundTasks, title: str = Form(...), file: Uplo
                 raise HTTPException(413, f"File exceeds {settings.MAX_UPLOAD_MB} MB limit")
             out.write(chunk)
     video.file_path, video.file_size_bytes = str(dest), size
+    # Phase 9: optional virus scan hook (CLAMSCAN_CMD, e.g.
+    # "clamscan --no-summary"). A non-zero exit rejects the upload
+    # and deletes the file; empty command = no scan.
+    if settings.CLAMSCAN_CMD:
+        import shlex
+        import subprocess
+
+        try:
+            proc = subprocess.run(shlex.split(settings.CLAMSCAN_CMD) + [str(dest)],
+                                  capture_output=True, timeout=300)
+        except Exception as e:  # noqa: BLE001 - a broken scanner must not keep a bad file
+            proc = None
+            logger.warning("virus scan failed to run on video %s: %s", video.id, e)
+        if proc is not None and proc.returncode != 0:
+            dest.unlink(missing_ok=True)
+            db.delete(video)
+            db.commit()
+            raise HTTPException(400, "Upload rejected by the virus scan")
     db.add(ProcessingJob(video_id=video.id, status="queued"))
     db.commit()
     db.refresh(video)
     worker.dispatch(video.id, background)
     db.refresh(video)
     return video
+
+
+def _check_magic_bytes(ext: str, head: bytes) -> None:
+    """Phase 9: reject files whose first bytes don't match the claimed
+    container. Raises 400 on mismatch or on a file too short to check."""
+    ok = False
+    if ext in ("mp4", "mov"):
+        ok = len(head) >= 8 and head[4:8] == b"ftyp"
+    elif ext in ("webm", "mkv"):
+        ok = head[:4] == b"\x1a\x45\xdf\xa3"
+    elif ext == "avi":
+        ok = len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"AVI "
+    if not ok:
+        raise HTTPException(
+            400, f"File content does not match the '.{ext}' container "
+                 "(magic bytes check failed) — the file may be misnamed")
 
 
 @router.get("", response_model=list[VideoOut])

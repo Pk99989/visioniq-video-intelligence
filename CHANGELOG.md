@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.11.0 — 2026-11-06 (Phase 9 security hardening)
+
+- **H5 — PyJWT migration:** the hand-rolled HMAC JWT is gone. `PyJWT==2.10.1` enforces HS256, signature, `exp`/`iat`/`iss="visioniq"`/`aud="visioniq"`/`jti` (required claims). Pre-v0.11.0 tokens are rejected (users re-login once). Tests: alg=none, tampered payload, expired, wrong iss/aud, missing claims — all 401.
+- **H6 — admin provisioning:** `scripts/make_admin.py <email> [--create] [--password]` promotes or creates an admin from the server shell (no self-service admin signup). Tested end to end, including admin listing users.
+- **M5 — Redis rate limits:** fixed windows — login 10/min per IP+email, register and password-reset-request 5/min per IP (429 beyond). Fails open without Redis (laptop profile); `RATE_LIMIT_ENABLED=0` disables. The old in-memory login-only middleware was removed. Test: 11th wrong login is 429, another account unaffected.
+- **M13 — refresh tokens:** access tokens now live 60 min (was 24 h); renewal uses a rotating opaque refresh token (SHA-256-hashed in new `refresh_tokens` table, Alembic v5), sent as an httpOnly cookie (SameSite=Lax, Secure in production, 7 days). Replay of a rotated token revokes the whole token family. Logout revokes both tokens. Frontend retries once on 401 via `/api/v1/auth/refresh`.
+- **Upload hardening:** magic-byte sniffing (mp4/mov `ftyp`, webm/mkv EBML, avi `RIFF`/`AVI `) rejects renamed files before anything is written; optional `CLAMSCAN_CMD` virus-scan hook (non-zero exit rejects the upload). 413 size cap already existed and is now tested.
+- **VLM SSRF guard:** `validate_vlm_base_url()` at startup for real VLM providers — localhost / `127.0.0.1` / `host.docker.internal` allowed, any other host must resolve to a public IP (private/loopback/link-local/multicast refused, including the 169.254.169.254 metadata endpoint).
+- **Tests:** `tests/test_security.py` expanded from 4 to 22 tests — H1 reset-token rules + single-use, all JWT attacks, refresh rotation + replay + logout revocation + pruning, cross-user 404 on every video-scoped route (video, detections, frames, annotated frames, events, alerts, trajectories, analytics, captions, scenes, summary, stream-url, clip, zones, evaluate, retry, delete, verify, acknowledge, chat), rate-limit 429, magic bytes, 413, filename traversal, scan hook, SSRF cases, make_admin script. New `tests/conftest.py` (session-scoped: rate limiting off for the suite — module fixtures register users before any function fixture could disable it).
+- Full suite: **102 backend tests pass** (+ 1 real-VLM e2e re-verified on the replaced VM: moondream caption, Ollama reinstalled) + 10 Vitest + 1 Playwright e2e.
+
 ## v0.10.0 — 2026-11-06 (Phase 8 frontend upgrades)
 
 - **Backend pagination (L10):** `limit`/`offset` (with `X-Total-Count`) on `GET /api/v1/videos`, detections, frames, events, alerts — list shape unchanged. New owner-scoped `GET /api/v1/stats` (video counts, detections by label, duration, storage, events, avg processing time).

@@ -27,11 +27,13 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix:** Phase 1 of the upgrade plan (see `UPGRADE_PLAN.md`): Ollama health check + timeout/retry, structured JSON captions, per-scene multi-frame sampling, distinct `provider` values for `fallback` / `detection-only` / `vlm`, and a real end-to-end test with a local vision model. Do not mark this done until a real model run is observed.
 
 ### H5. Hand-rolled JWT (custom HMAC implementation, no `alg` check, no `iat`/`aud`/`iss`)
+- **Status: FIXED in v0.11.0 (Phase 9, 2026-11-06).** PyJWT 2.10.1; `jwt.decode` enforces HS256, signature, `exp`/`iat`/`iss`/`aud`/`jti` (required claims). Tests: alg=none, tampered payload, expired, wrong iss/aud, missing claims — all 401. Pre-v0.11.0 tokens (no iss/aud/iat) are rejected; users re-login once.
 - **Where:** `backend/app/security.py: create_token()`, `decode_token()`.
 - **Impact:** correct today, but every future change risks a classic JWT vulnerability; no standard library review applies.
 - **Fix:** replace with PyJWT (`PyJWT==2.x`), verify `alg == HS256` explicitly, add `iat`, `aud="visioniq"`, `iss="visioniq"`, and keep the existing `jti` revocation logic. Add tests for `alg=none`, tampered payload, expired token, wrong-secret token.
 
 ### H6. No admin provisioning path
+- **Status: FIXED in v0.11.0 (Phase 9, 2026-11-06).** `scripts/make_admin.py <email> [--create] [--password]` promotes or creates an admin; tested end to end (admin can list users, non-admin gets 403 — see test_security.py::test_make_admin_script).
 - **Where:** everywhere / nowhere — no code assigns `role="admin"` (verified by grep); `backend/app/routers/auth.py: list_users()` is admin-only and therefore unreachable on a fresh deploy.
 - **Impact:** user management and any future admin tooling cannot be used without manual DB edits.
 - **Fix:** add a one-time `scripts/make_admin.py <email>` CLI (or `ADMIN_EMAILS` env seeding on first start), plus a test that an admin can list users and a non-admin gets 403.
@@ -55,6 +57,7 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix:** delete expired rows on login/logout (cheap `DELETE WHERE expires_at < now()`), plus a periodic cleanup (Celery beat or startup sweep). Add a test asserting expired rows are removed.
 
 ### M5. Rate limiting is in-memory, login-only, per-process
+- **Status: FIXED in v0.11.0 (Phase 9, 2026-11-06).** Redis-backed fixed windows (login 10/min per IP+email, register/reset 5/min per IP, 429 beyond; `RATE_LIMIT_ENABLED=0` disables). The old in-memory middleware was REMOVED, not kept for the laptop profile — the Redis limiter fails open without Redis, which is the documented tradeoff (SECURITY.md). Test: 11th wrong login is 429, another account unaffected.
 - **Where:** `backend/app/main.py: login_rate_limit()`.
 - **Impact:** resets on restart; useless across replicas; register and password-reset-request are unlimited.
 - **Fix:** move to Redis-backed limits (already a dependency in the full stack) or a shared store; add limits for register (e.g. 10/h/IP) and password-reset-request (e.g. 5/h/IP); keep the in-memory limiter only for the SQLite laptop profile. Add tests.
@@ -92,6 +95,7 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix:** add a conversations sidebar/list on the chat page, send `conversation_id` on follow-ups, and pass prior turns to the agent (see audit §2, agent.py — memory is stored but never fed back).
 
 ### M13. Frontend token in `localStorage`, no refresh flow
+- **Status: FIXED in v0.11.0 (Phase 9, 2026-11-06).** Short-lived access token (60 min) + rotating httpOnly refresh cookie (7 days, SHA-256-hashed in DB, replay revokes the whole token family). Frontend retries once on 401 via /auth/refresh. Residual: the access token itself still lives in localStorage (short-lived now); moving it out is a future item.
 - **Where:** `frontend/lib/api.ts: getToken()`.
 - **Impact:** XSS can steal the token; users are forced to re-login every 24 h.
 - **Fix (medium effort, needs care):** short-lived access token + httpOnly refresh cookie, or at minimum a silent re-login prompt before expiry. Do not attempt without the H5 JWT work.

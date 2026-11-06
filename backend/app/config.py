@@ -44,7 +44,27 @@ class Settings:
     STORAGE_DIR: Path = Path(_env("STORAGE_DIR", str(BASE_DIR / "storage")))
     JWT_SECRET: str = _env("JWT_SECRET", "dev-only-change-me-in-production")
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = _env_int("JWT_EXPIRE_MINUTES", 60 * 24)
+    JWT_ISSUER: str = "visioniq"
+    JWT_AUDIENCE: str = "visioniq"
+    # Phase 9 (M13): access tokens are short-lived (60 min). A rotating
+    # httpOnly refresh cookie (REFRESH_TOKEN_DAYS) renews them — see
+    # /api/v1/auth/refresh. The old 24 h access token is gone.
+    JWT_EXPIRE_MINUTES: int = _env_int("JWT_EXPIRE_MINUTES", 60)
+    REFRESH_TOKEN_DAYS: int = _env_int("REFRESH_TOKEN_DAYS", 7)
+    # Phase 9 (M5): fixed-window rate limits on auth endpoints
+    # (per IP, and per email for login). Redis-backed; when Redis is
+    # unreachable the limiter fails open and logs a warning, so the
+    # laptop profile (no Redis) keeps working. Set RATE_LIMIT_ENABLED=0
+    # to turn the limiter off entirely (e.g. a deployment that rate
+    # limits upstream, or the test suite — see tests/conftest.py).
+    RATE_LIMIT_ENABLED: bool = _env("RATE_LIMIT_ENABLED", "1") == "1"
+    RATE_LIMIT_LOGIN_PER_MINUTE: int = _env_int("RATE_LIMIT_LOGIN_PER_MINUTE", 10)
+    RATE_LIMIT_REGISTER_PER_MINUTE: int = _env_int("RATE_LIMIT_REGISTER_PER_MINUTE", 5)
+    RATE_LIMIT_RESET_PER_MINUTE: int = _env_int("RATE_LIMIT_RESET_PER_MINUTE", 5)
+    # Phase 9: optional virus scan. When set, the command runs on each
+    # uploaded file with the file path appended (e.g. "clamscan --no-summary"
+    # or "true"); a non-zero exit rejects the upload. Empty = no scan.
+    CLAMSCAN_CMD: str = _env("CLAMSCAN_CMD", "")
     MAX_UPLOAD_MB: int = _env_int("MAX_UPLOAD_MB", 500)
     ALLOWED_EXTENSIONS: set[str] = {
         e.strip().lower()

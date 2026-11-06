@@ -1,21 +1,31 @@
-"""Auth: PBKDF2 password hashing + HMAC-SHA256 JWT (stdlib only, so the
-auth path has no surprise dependency). RBAC is role=user|admin; every
-video query is additionally scoped to owner_id (admins exempt).
+"""Auth: PBKDF2 password hashing + PyJWT (Phase 9, H5). RBAC is
+role=user|admin; every video query is additionally scoped to owner_id
+(admins exempt).
+
+H5: the hand-rolled HMAC JWT is gone. PyJWT enforces the algorithm
+(HS256 only — alg=none and alg confusion are rejected), the signature,
+and the registered claims: exp, iat, iss="visioniq", aud="visioniq",
+jti. Tokens minted by the old hand-rolled code (no iss/aud/iat) are
+rejected — they lived at most 24 h, so a re-login covers the upgrade.
 
 Phase 3: every JWT carries a ``jti`` so logout can revoke it
 (RevokedToken table), and video streaming uses a short-lived signed
 URL token — the <video> tag cannot send a bearer token, so the signed
 URL is how the browser seeks with HTTP Range requests.
+
+Phase 9 (M13): access tokens live 60 minutes. Renewal uses a rotating
+opaque refresh token stored hashed in the DB and sent as an httpOnly
+cookie (see routers/auth.py).
 """
-import base64
 import hashlib
 import hmac
 import json
 import secrets
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -25,6 +35,10 @@ from .database import get_db
 from .models import RevokedToken, User
 
 _bearer = HTTPBearer(auto_error=False)
+
+# Claims PyJWT must find on every access token. A token without any of
+# these (including every token the old hand-rolled code minted) fails.
+_REQUIRED_CLAIMS = ("exp", "iat", "jti")
 
 
 def hash_password(password: str) -> str:
@@ -42,37 +56,32 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def _b64(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-
 def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def create_token(user: User) -> str:
-    header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    payload = _b64(
-        json.dumps(
-            {"sub": str(user.id), "email": user.email, "role": user.role,
-             "jti": secrets.token_hex(16),
-             "exp": int(time.time()) + settings.JWT_EXPIRE_MINUTES * 60}
-        ).encode()
-    )
-    sig = _b64(hmac.new(settings.JWT_SECRET.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
-    return f"{header}.{payload}.{sig}"
+    """Short-lived access token (M13: 60 min by default)."""
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": str(user.id), "email": user.email, "role": user.role,
+         "jti": secrets.token_hex(16),
+         "iat": now,
+         "exp": now + timedelta(minutes=settings.JWT_EXPIRE_MINUTES),
+         "iss": settings.JWT_ISSUER, "aud": settings.JWT_AUDIENCE},
+        settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> Optional[dict]:
+    """Verify an access token. Returns the claims or None. PyJWT
+    rejects: wrong/no algorithm (alg=none, alg confusion), bad
+    signature, expired tokens, wrong issuer/audience, missing claims."""
     try:
-        header, payload, sig = token.split(".")
-        expect = _b64(hmac.new(settings.JWT_SECRET.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest())
-        if not hmac.compare_digest(expect, sig):
-            return None
-        data = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        if data.get("exp", 0) < time.time():
-            return None
-        return data
+        return jwt.decode(
+            token, settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+            audience=settings.JWT_AUDIENCE, issuer=settings.JWT_ISSUER,
+            options={"require": _REQUIRED_CLAIMS})
     except Exception:
         return None
 

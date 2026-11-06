@@ -1,9 +1,10 @@
-# PROJECT_STATE — VisionIQ v0.10.0
+# PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 8 complete (frontend upgrades), verified 2026-11-06.
-  Phases 0–7 done: audit, real VLM (moondream, CPU), adaptive sampling,
+- **Current phase**: Phase 9 complete (security hardening), verified 2026-11-06.
+  Phases 0–8 done: audit, real VLM (moondream, CPU), adaptive sampling,
   CV calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
-  event engine, DB/infra hardening. Next: Phase 9 security hardening.
+  event engine, DB/infra hardening, frontend upgrades. Next: Phase 10
+  observability (structured logs, metrics, Prometheus/Grafana).
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -50,6 +51,17 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v0.11.0 (Phase 9 security)**: PyJWT 2.10.1 (HS256, exp/iat/iss/aud/
+  jti enforced; pre-v0.11.0 tokens rejected); `scripts/make_admin.py`;
+  Redis rate limits (login 10/min per IP+email, register/reset 5/min
+  per IP, 429; fails open without Redis; old in-memory middleware
+  removed); rotating httpOnly refresh cookies (60-min access tokens,
+  replay revokes the token family, Alembic v5); upload magic-byte
+  sniffing + optional `CLAMSCAN_CMD` scan hook; VLM SSRF guard at
+  startup (localhost/host.docker.internal/public IPs only); SECURITY.md
+  rewritten; audit debts H5/H6/M5/M13 fixed. 102 backend tests pass
+  (+ 1 real-VLM e2e re-verified on the replaced VM: Ollama reinstalled,
+  moondream caption) + 10 Vitest + 1 e2e.
 - **v0.10.0 (Phase 8 frontend)**: backend pagination (limit/offset +
   X-Total-Count) on videos/detections/frames/events/alerts; GET
   /api/v1/stats (owner-scoped dashboard analytics); chat history —
@@ -70,6 +82,30 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v0.11.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **102 passed** (incl. 22 security tests: JWT attacks, refresh
+    rotation/replay, cross-user 404 on every video route, rate-limit
+    429, magic bytes, 413, filename traversal, scan hook, SSRF,
+    make_admin).
+  - Real-VLM e2e: `VISIONIQ_VLM_E2E=1 pytest tests/test_vlm_e2e.py -q`
+    → **1 passed** (moondream, 71 s incl. model load; Ollama
+    reinstalled on the replaced VM — the first install was killed
+    before llama-server landed, so inference 500'd; full reinstall
+    fixed it, systemd service stopped+disabled, `ollama serve` as
+    root).
+  - Frontend: `npm test` (Vitest) → **10 passed**; `npm run build`
+    (Next 14.2.35) → **compiled successfully, 16 routes**.
+  - E2E browser: `VISIONIQ_E2E=1 pytest tests/test_e2e_browser.py -q`
+    → **1 passed** (Chromium vs live frontend + in-process backend:
+    register → upload → ready → search "bus" → label filter →
+    clip download → "airplane" no matches → chat + follow-up →
+    reopen conversation → dashboard stats → video clip download →
+    360 px no-overflow → sign out).
+  - Live infra (this VM, 2026-11-06): Postgres 16 + Redis 7
+    reinstalled (Azure apt mirror — the default cogentco mirror
+    stalls), Qdrant 1.20.0 restarted from ~/tmp/qdrant, Ollama
+    0.40.15 reinstalled with moondream blobs intact in ~/.ollama/models.
 - **Tests executed (2026-11-06, v0.10.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **81 passed, 3 skipped** (integration tests skip: this VM was
@@ -106,9 +142,8 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 9: security hardening (PyJWT migration H5, admin provisioning
-     H6, Redis rate limits M5, token storage M13, upload magic-byte
-     sniffing, expanded test_security.py).
+  1. Phase 10: observability (structured logs, request IDs, /metrics
+     Prometheus, Grafana compose profile).
   2. On the user's WSL machine: `docker compose -f docker-compose.laptop.yml up --build`,
      upload a real video, confirm the flow in the browser.
   3. `gh auth login` then create the GitHub repo and push.

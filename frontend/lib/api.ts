@@ -5,16 +5,34 @@ export function getToken(): string | null {
   return localStorage.getItem("visioniq_token");
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(`${API}${path}`, {
     ...init,
+    credentials: "include", // sends the httpOnly refresh cookie (Phase 9, M13)
     headers: {
       ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
       ...(init.headers || {}),
     },
   });
+  if (res.status === 401 && !path.startsWith("/api/v1/auth/") && !(init as any)._retried) {
+    // Access tokens live 60 minutes (M13). Try the refresh cookie
+    // once, then retry the original call with the new token.
+    try {
+      const refreshed = await api<{ access_token: string }>("/api/v1/auth/refresh", {
+        method: "POST",
+      });
+      localStorage.setItem("visioniq_token", refreshed.access_token);
+      return request(path, { ...init, _retried: true } as RequestInit);
+    } catch {
+      // Refresh failed — fall through and report the original 401.
+    }
+  }
+  return res;
+}
+
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await request(path, init);
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -64,10 +82,7 @@ export type VideoEvent = {
 /** Paginated list (Phase 8 / L10): the backend keeps the list shape
  *  and puts the total in the X-Total-Count header. */
 export async function apiPage<T>(path: string): Promise<{ items: T[]; total: number }> {
-  const token = getToken();
-  const res = await fetch(`${API}${path}`, {
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  });
+  const res = await request(path);
   if (!res.ok) {
     let detail = res.statusText;
     try {

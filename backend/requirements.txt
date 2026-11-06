@@ -3,6 +3,10 @@ uvicorn==0.38.0
 sqlalchemy==2.0.44
 pydantic==2.12.5
 httpx==0.28.1
+# Phase 9 (H5): PyJWT replaces the hand-rolled HMAC JWT — the library
+# enforces alg, signature, exp, iat, iss and aud instead of trusting
+# a manual string split.
+PyJWT==2.10.1
 opencv-python-headless==4.12.0.88
 reportlab==4.4.6
 pytest==8.4.2

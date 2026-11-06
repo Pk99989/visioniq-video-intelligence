@@ -9,6 +9,7 @@ export default function SignOut() {
     if (token) {
       await fetch(`${API}/api/v1/auth/logout`, {
         method: "POST", headers: { Authorization: `Bearer ${token}` },
+        credentials: "include", // revokes the refresh cookie too (M13)
       }).catch(() => {});
     }
     localStorage.removeItem("visioniq_token");

@@ -198,6 +198,22 @@ class RevokedToken(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class RefreshToken(Base):
+    """Rotating refresh tokens (Phase 9, M13). Only the SHA-256 hash
+    is stored — a stolen database row cannot be used to refresh.
+    Each refresh revokes the token it was presented with (rotation)
+    and issues a new one, so a replayed token is detected: the old
+    hash is already revoked. revoked_at is set on rotation and on
+    logout; expired rows are pruned at startup."""
+    __tablename__ = "refresh_tokens"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class PasswordResetToken(Base):
     """Single-use password-reset token, stored as a SHA-256 hash (never
     the raw token). Expires after 1 hour; marked used on success."""

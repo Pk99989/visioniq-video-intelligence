@@ -21,17 +21,55 @@ exponential backoff (VLM_MAX_RETRIES), a health check
 is visible instead of silently degrading to templates.
 """
 import base64
+import ipaddress
 import json
 import logging
 import re
+import socket
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 
 from ..config import settings
 
 logger = logging.getLogger("visioniq.vlm")
+
+# Phase 9 (SSRF): hosts the VLM may point at. Local Ollama and the
+# Docker host alias are allowed; everything else must resolve to a
+# public IP. Private ranges (10/8, 172.16/12, 192.168/16), loopback
+# other than localhost, link-local (169.254/16 — the cloud metadata
+# endpoint), and multicast are rejected, so a crafted VLM_BASE_URL
+# cannot make the backend call an internal service.
+_VLM_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
+
+
+def validate_vlm_base_url(url: str) -> None:
+    """Raise ValueError when a VLM base URL points at an internal
+    address. Checked at startup (main.py) for real VLM providers and
+    in tests. A URL with no host, a non-http(s) scheme, or a host
+    that resolves to a private/loopback/link-local address is
+    rejected. DNS is resolved at check time; a host that does not
+    resolve is rejected too (fail closed)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"VLM_BASE_URL must be an http(s) URL with a host: {url!r}")
+    host = parsed.hostname.lower()
+    if host in _VLM_ALLOWED_HOSTS:
+        return
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"VLM_BASE_URL host does not resolve: {host!r}") from e
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+            raise ValueError(
+                f"VLM_BASE_URL host {host!r} resolves to internal address {ip} — "
+                "refused (SSRF guard; allow-list is localhost / "
+                "host.docker.internal / public IPs)")
 
 _JSON_PROMPT = (
     "Describe this video frame as JSON only, no other text. "
