@@ -105,6 +105,7 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix:** single docs pass as part of Phase 13; add a CI check that fails if `PROJECT_STATE.md` still contains the phrases that are known-stale after each release (cheap grep guard), or at least update the docs in the same commit as the feature.
 
 ### M15. Dockerfiles run as root; no healthchecks; Qdrant unpinned and unchecked
+- **Status: FIXED in v0.14.0 (Phase 12, 2026-11-06).** Backend Dockerfile: non-root `visioniq` user (entrypoint runs as root only to wait for services, apply migrations and fix the storage volume's ownership, then drops to `visioniq` via runuser); HEALTHCHECK on /health (python urllib, no curl in slim). Frontend: multi-stage build (deps/builder/runner), runner as built-in `node` user, HEALTHCHECK on /login (wget). Qdrant pinned to v1.20.0 with a healthcheck on /healthz; backend/worker `depends_on` qdrant (service_healthy); `restart: unless-stopped` on all services in both compose files. Verified on this VM with host networking (bridge/iptables are blocked here — see RELEASE.md).
 - **Where:** `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`.
 - **Fix:** add `USER` (non-root) to both images; add `HEALTHCHECK` (backend: `/health`, frontend: `/`); pin `qdrant/qdrant:<version>`; add a Qdrant healthcheck and make backend `depends_on` it; add `restart: unless-stopped` to services.
 

@@ -1,12 +1,15 @@
 # PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 11 complete (test expansion), verified 2026-11-06.
-  Phases 0–10 done: audit, real VLM (moondream, CPU), adaptive sampling,
-  CV calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
+- **Current phase**: Phase 12 complete (production engineering),
+  verified 2026-11-06 — with one honest exception: Docker containers
+  cannot run on this VM (the kernel blocks iptables, bridge creation
+  and network namespaces), so the clean-checkout `docker compose up`
+  step is pending on the user's Docker Desktop machine. Phases 0–11
+  done: audit, real VLM (moondream, CPU), adaptive sampling, CV
+  calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
   event engine, DB/infra hardening, frontend upgrades, security
-  hardening, observability. Next: Phase 12 production engineering
-  (non-root Docker, healthchecks, pinned Qdrant, single start command
-  from a clean checkout).
+  hardening, observability, test expansion. Next: Phase 13 GitHub +
+  docs (needs the user's `gh auth login`).
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -53,6 +56,20 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v0.14.0 (Phase 12 production engineering)**: non-root Docker
+  images (backend `visioniq` user via entrypoint privilege drop,
+  frontend multi-stage as `node`); healthchecks on all services;
+  Qdrant pinned v1.20.0; entrypoint waits for Postgres/Redis/Qdrant
+  (60 s each, skips SQLite/localhost, fails loudly); RELEASE.md
+  checklist; git tags v0.1.0–v0.14.0. Verified natively (entrypoint:
+  migrations, chown, uid-10001 import, fail path) and `docker
+  compose config` on both files. NOT verified here: the
+  clean-checkout `docker compose up` — this VM cannot run any
+  container (kernel blocks iptables, bridge creation and network
+  namespaces) and the daemon's Go TLS handshake to Docker Hub is
+  filtered by the egress proxy (base images pulled with
+  `scripts/docker_pull.py` instead). That step is pending on the
+  user's Docker Desktop machine.
 - **v0.13.0 (Phase 11 test expansion)**: shared conftest fixtures
   (client, auth_user, ready_video, bus_video, repo-local test images
   in tests/data/); markers unit (auto)/integration/vlm/e2e (105/3/2/1
@@ -107,6 +124,27 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v0.14.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **108 passed, 1 skipped** (re-run at close-out; version bump only).
+  - Entrypoint (native, from a clean copy): waits skipped for
+    SQLite, migrations applied (188,416-byte DB), storage chowned to
+    `visioniq`, app imports as uid 10001, version 0.13.0 shown
+    (bumped to 0.14.0 after the test); wait fail path returns False
+    after the timeout. Two test artifacts found, not code bugs:
+    `/tmp`'s tmpfs has broken ownership semantics (root cannot write
+    a visioniq-owned file there — the test DB moved into the storage
+    volume, as the laptop profile does) and the VM's gateway answers
+    every outbound TCP connect, so a real dead-host wait test is
+    impossible here.
+  - Compose: `docker compose config` on both files → valid.
+  - Docker runtime: **cannot run on this VM** — `docker run` and
+    `docker build` fail at sandbox creation ("operation not
+    permitted" on the network namespace). Base images
+    python:3.12-slim and node:20-alpine were pulled with
+    `scripts/docker_pull.py` and `docker load`ed (the daemon's Go
+    TLS handshake is filtered by the egress proxy; OpenSSL clients
+    work).
 - **Tests executed (2026-11-06, v0.13.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **108 passed, 1 skipped** (the vlm RAG eval skips without
@@ -198,11 +236,10 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 12: production engineering (non-root Docker images,
-     healthchecks, pinned Qdrant, entrypoint waits for services,
-     single start command verified from a clean checkout, RELEASE.md
-     checklist, git tags).
-  2. On the user's WSL machine: `docker compose -f docker-compose.laptop.yml up --build`,
-     upload a real video, confirm the flow in the browser.
-  3. `gh auth login` then create the GitHub repo and push.
-  4. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.
+  1. Phase 13: GitHub + docs (needs the user's `gh auth login`;
+     fix the audit §11 doc drift / M14; README rewrite with only
+     verified numbers/screenshots).
+  2. On the user's WSL machine: verify the clean-checkout start —
+     `docker compose -f docker-compose.laptop.yml up --build -d`,
+     all services healthy, upload a real video, confirm the flow.
+  3. Run llava:7b on the user's RTX 3050 and confirm real VLM captions.

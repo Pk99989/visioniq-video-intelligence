@@ -1,8 +1,15 @@
 # Lightweight laptop profile (RTX 3050 / 16 GB): SQLite + in-process
 # vectors only. No Postgres, no Qdrant, no Redis. This is the recommended
 # first run on the user's hardware.
+#
+# Single start command (from the repo root):
+#   docker compose -f docker-compose.laptop.yml up --build -d
+# Check health:  docker compose -f docker-compose.laptop.yml ps
+#                 curl localhost:8000/health
+# Stop:           docker compose -f docker-compose.laptop.yml down
 services:
   backend:
+    restart: unless-stopped
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -15,12 +22,18 @@ services:
       - backend_storage:/app/storage
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
           cpus: "2"
           memory: 4G
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -28,7 +41,13 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 volumes:
   backend_storage:

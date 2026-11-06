@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.14.0 — 2026-11-06 (Phase 12 production engineering)
+
+- **Non-root images (M15 fixed):** backend runs as the `visioniq` user — the entrypoint runs as root only to wait for services, apply migrations and fix the storage volume's ownership (named volumes from pre-0.14 root images are root-owned), then drops to `visioniq` via runuser. Frontend is a multi-stage build (deps/builder/runner) running as the built-in `node` user.
+- **Healthchecks:** backend `/health` (python urllib — no curl in the slim image), frontend `/login` (wget), Postgres `pg_isready`, Redis `ping`, Qdrant `/healthz`; backend/worker `depends_on` all three with `service_healthy`; `restart: unless-stopped` on every service in both compose files.
+- **Qdrant pinned** to v1.20.0 (was `:latest`).
+- **Entrypoint waits:** waits up to 60 s per service (Postgres/Redis via TCP, Qdrant via HTTP) before migrations; skips SQLite/localhost (laptop profile); fails loudly (exit 1) when a service never appears — the container then restarts and retries. Verified natively: waits skipped for SQLite, migrations applied, storage chowned to `visioniq`, app imports as uid 10001, fail path returns after the timeout.
+- **RELEASE.md** checklist (tests → Docker from a clean checkout → tag → zip) and **git tags** for every release (v0.1.0–v0.14.0).
+- **Honest limitation:** Docker cannot run containers on this VM at all — the kernel blocks iptables, bridge creation and network-namespace setup, and the egress proxy stalls the daemon's Go TLS handshake to Docker Hub. The daemon is installed (data-root on /home, `--iptables=false --bridge=none`), base images were pulled with a new `scripts/docker_pull.py` (Python/OpenSSL registry client + `docker load`) and `docker compose config` validates both files, but the clean-checkout `docker compose up` verification must happen on the user's machine (Docker Desktop, where bridge networking works). See RELEASE.md.
+
 ## v0.13.0 — 2026-11-06 (Phase 11 test expansion)
 
 - **Shared fixtures (L12 fixed):** `tests/conftest.py` now has `client`, `auth_user` (uuid email, id resolved from the DB), `ready_video`, `bus_video` (per-test tmp_path), `bus_jpg`/`traffic_jpg` from repo-local `tests/data/` (the /tmp images kept being wiped by VM restarts — now committed), `db_session`. test_observability.py migrated to them as proof. Two order bugs found and fixed while doing this: (1) conftest sets `SYNC_PROCESSING=1` before any test module loads — a module importing the app without it froze the settings singleton with async processing (uploads stayed "uploaded"); (2) test_detection.py never deleted its DB, so a password changed by test_phase3 persisted across runs.

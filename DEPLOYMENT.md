@@ -6,22 +6,34 @@ Prerequisites: Docker Desktop with WSL2 integration, or Docker Engine in WSL.
 
 ```bash
 cp .env.example .env   # set a real JWT_SECRET
-docker compose -f docker-compose.laptop.yml up --build
+docker compose -f docker-compose.laptop.yml up --build -d
+docker compose -f docker-compose.laptop.yml ps   # both services healthy
+curl localhost:8000/health                       # {"status": "ok", "version": "0.14.0", ...}
 ```
 
 Frontend http://localhost:3000 · backend http://localhost:8000 · API docs /docs.
 Shutdown: `docker compose -f docker-compose.laptop.yml down`
 (volumes persist storage; add `-v` to wipe them).
 
+The backend entrypoint waits for its services, applies Alembic
+migrations, fixes the storage volume's ownership (named volumes
+created by the pre-0.14 root images are root-owned) and drops to the
+non-root `visioniq` user before starting the server. First start
+takes a few minutes (image builds + model downloads on first video).
+
 ## Full stack
 
 ```bash
-docker compose up --build
+docker compose up --build -d
+docker compose ps            # all services healthy
+curl localhost:8000/health
 ```
 
 Adds PostgreSQL (`DATABASE_URL` is set in the compose file) and Qdrant
 (`QDRANT_URL=http://qdrant:6333`). Set `JWT_SECRET` in `.env` first —
-the full compose file refuses to start without it.
+the full compose file refuses to start without it. Qdrant is pinned
+to v1.20.0; all services have healthchecks and `restart:
+unless-stopped`.
 
 ## Without Docker
 

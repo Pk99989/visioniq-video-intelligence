@@ -1,9 +1,19 @@
-# Full stack (Phase 2): PostgreSQL + Qdrant + Redis + Celery worker.
-# Alembic migrations run at backend startup? No — run them explicitly:
-#   docker compose exec backend alembic upgrade head
-# (create_all is still kept as a fallback in app startup.)
+# Full stack (Phase 2, hardened Phase 12): PostgreSQL + Qdrant +
+# Redis + Celery worker + backend + frontend.
+#
+# Single start command (from the repo root, with a .env that sets
+# JWT_SECRET — see .env.example):
+#   docker compose up --build -d
+# The backend entrypoint waits for Postgres/Redis/Qdrant, applies
+# Alembic migrations, fixes the storage volume's ownership and drops
+# to the non-root `visioniq` user before starting the server.
+# Check health:  docker compose ps   (all services should be healthy)
+#                 curl localhost:8000/health
+# Stop:           docker compose down   (volumes are kept)
+# Full reset:     docker compose down -v   (DELETES all data)
 services:
   postgres:
+    restart: unless-stopped
     image: postgres:16
     environment:
       POSTGRES_USER: visioniq
@@ -17,12 +27,21 @@ services:
       timeout: 5s
       retries: 10
   qdrant:
-    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    # Phase 12: pinned (was :latest — an unpinned vector DB is a
+    # silent schema/upgrade risk).
+    image: qdrant/qdrant:v1.20.0
     volumes:
       - qdrantdata:/qdrant/storage
     ports:
       - "6333:6333"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     volumes:
       - redisdata:/data
@@ -32,6 +51,7 @@ services:
       timeout: 5s
       retries: 10
   backend:
+    restart: unless-stopped
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -51,10 +71,17 @@ services:
       - backend_storage:/app/storage
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     deploy:
       resources:
@@ -62,6 +89,7 @@ services:
           cpus: "2"
           memory: 4G
   worker:
+    restart: unless-stopped
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -81,14 +109,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
           cpus: "2"
           memory: 4G
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -96,8 +127,14 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 volumes:
   pgdata:
   qdrantdata:
