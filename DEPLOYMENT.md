@@ -80,6 +80,28 @@ ollama pull llava:7b        # or: ollama pull qwen2-vl:7b
 ```
 cd backend && alembic upgrade head     # 12 tables; downgrade base reverses it
 ```
+The app also runs migrations itself at startup, and the Docker
+entrypoint (`backend/entrypoint.sh`) runs them before the server —
+never `create_all` on the app path (Phase 7, H2).
+
+**Backup and restore (Phase 7):**
+```
+# Back up Postgres + storage + a Qdrant snapshot, with row counts:
+DATABASE_URL=postgresql://visioniq:visioniq@localhost:5432/visioniq \
+  STORAGE_DIR=./backend/storage QDRANT_URL=http://localhost:6333 \
+  BACKUP_DIR=./backups scripts/backup.sh
+# Restore into a scratch DB and verify every row count matches:
+scripts/restore.sh ./backups/<timestamp> \
+  postgresql://visioniq:visioniq@localhost:5432/visioniq_restore \
+  /tmp/visioniq_restore_storage
+# Then rebuild Qdrant from the restored DB:
+DATABASE_URL=postgresql://visioniq:visioniq@localhost:5432/visioniq_restore \
+  python scripts/reindex_qdrant.py
+```
+Tested 2026-11-06: seeded rows backed up and restored with all
+counts matching. The restore needs a role that can CREATE DATABASE
+(in docker-compose the `visioniq` role is a superuser; on a system
+Postgres grant it, or set `PG_ADMIN_URL` to a superuser URL).
 
 **Celery worker (full stack only):** `docker compose up` now starts a
 `worker` service (Redis broker). The laptop profile stays in-process

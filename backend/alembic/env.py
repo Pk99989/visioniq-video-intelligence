@@ -18,10 +18,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from app.config import settings  # noqa: E402
-from app.database import Base  # noqa: E402
+from app.database import Base, normalized_database_url  # noqa: E402
 from app import models  # noqa: E402,F401  (registers tables)
 
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", normalized_database_url())
 target_metadata = Base.metadata
 
 

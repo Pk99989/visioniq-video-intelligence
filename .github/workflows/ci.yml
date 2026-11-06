@@ -11,7 +11,41 @@ jobs:
       - run: |
           cd backend
           pip install -r requirements.txt
-          SYNC_PROCESSING=1 DATABASE_URL="sqlite:////tmp/visioniq_test.db" STORAGE_DIR="/tmp/visioniq_test_storage" JWT_SECRET="ci-test-secret" python -m pytest tests/ -q
+          SYNC_PROCESSING=1 DATABASE_URL="sqlite:////tmp/visioniq_test.db" STORAGE_DIR="/tmp/visioniq_test_storage" JWT_SECRET="ci-test-secret" python -m pytest tests/ -q -m "not integration and not e2e and not vlm"
+  backend-integration:
+    # Live-infra checks (Phase 7): migrations + pooling against real
+    # Postgres, Celery reliability against real Redis, Qdrant payload
+    # indexes against a real Qdrant. Unit tests above skip these.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: visioniq
+          POSTGRES_PASSWORD: <redacted>
+          POSTGRES_DB: visioniq
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U visioniq"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.20.0
+        ports: ["6333:6333"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg postgresql-client
+      - run: |
+          cd backend
+          pip install -r requirements.txt
+          SYNC_PROCESSING=1 DATABASE_URL="sqlite:////tmp/visioniq_test.db" STORAGE_DIR="/tmp/visioniq_test_storage" JWT_SECRET="ci-test-secret" VISIONIQ_TEST_POSTGRES_URL="postgresql://visioniq:visioniq@localhost:5432/visioniq_test" QDRANT_URL="http://localhost:6333" python -m pytest tests/ -q -m integration
   frontend:
     runs-on: ubuntu-latest
     steps:

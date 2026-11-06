@@ -48,6 +48,10 @@ class ProcessingJob(Base):
     status = Column(String(32), default="queued", nullable=False)
     # queued | running | done | failed
     attempts = Column(Integer, default=0, nullable=False)
+    # Phase 7 (M10): the Celery task id for this job, so a stuck job
+    # can be reconciled against the Celery result backend instead of
+    # being guessed at from the DB alone.
+    celery_task_id = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)

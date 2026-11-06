@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..models import PasswordResetToken, User
+from ..models import PasswordResetToken, RevokedToken, User
 from ..schemas import LoginIn, PasswordResetIn, PasswordResetRequestIn, RegisterIn, TokenOut, UserOut
 from ..security import (
     create_token, decode_token, get_current_user, hash_password, hash_token,
@@ -17,6 +17,23 @@ from ..security import (
 logger = logging.getLogger("visioniq.auth")
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+def prune_expired_tokens(db: Session) -> int:
+    """Delete expired auth rows (M4): revoked JWTs past expiry and
+    password-reset tokens that are used or expired. Called at app
+    startup; returns how many rows were removed. Never touches a
+    token that is still valid."""
+    now = datetime.utcnow()
+    expired_revoked = (db.query(RevokedToken)
+                       .filter(RevokedToken.expires_at < now)
+                       .delete(synchronize_session=False))
+    expired_resets = (db.query(PasswordResetToken)
+                      .filter((PasswordResetToken.expires_at < now)
+                              | (PasswordResetToken.used.is_(True)))
+                      .delete(synchronize_session=False))
+    db.commit()
+    return expired_revoked + expired_resets
 
 
 @router.post("/register", response_model=UserOut, status_code=201)

@@ -176,11 +176,18 @@ def get_qdrant_client():
 def ensure_qdrant_collection(client=None) -> bool:
     """Create the collection (384-d, cosine) if it does not exist yet.
     Phase 1 upserted points without ever creating the collection, so a
-    fresh Qdrant would reject the first upsert."""
+    fresh Qdrant would reject the first upsert.
+
+    Phase 7: payload indexes for the fields the read path filters on
+    (owner_id — the privacy boundary — video_id, timestamp_seconds).
+    Without them Qdrant scans every point on each filtered search;
+    with them the filter runs on the index. Index creation is
+    idempotent, so this also repairs a collection created before the
+    indexes existed."""
     if not settings.QDRANT_URL:
         return False
     try:
-        from qdrant_client.models import Distance, VectorParams
+        from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 
         client = client or get_qdrant_client()
         if not client.collection_exists(settings.QDRANT_COLLECTION):
@@ -188,6 +195,16 @@ def ensure_qdrant_collection(client=None) -> bool:
                 settings.QDRANT_COLLECTION,
                 vectors_config=VectorParams(size=settings.EMBEDDING_DIM, distance=Distance.COSINE),
             )
+        for key, schema in (("owner_id", PayloadSchemaType.INTEGER),
+                            ("video_id", PayloadSchemaType.INTEGER),
+                            ("timestamp_seconds", PayloadSchemaType.FLOAT)):
+            try:
+                client.create_payload_index(settings.QDRANT_COLLECTION,
+                                            field_name=key, field_schema=schema)
+            except Exception as exc:
+                # Already exists, or the server version disagrees —
+                # search still works, just unindexed for that field.
+                logger.debug("qdrant payload index %s: %s", key, exc)
         return True
     except Exception as exc:
         logger.warning("qdrant ensure_collection failed: %s", exc)
@@ -257,6 +274,7 @@ def reindex_qdrant(db: Session) -> dict:
     client.create_collection(
         settings.QDRANT_COLLECTION,
         vectors_config=VectorParams(size=settings.EMBEDDING_DIM, distance=Distance.COSINE))
+    ensure_qdrant_collection(client)  # payload indexes (Phase 7)
     frames = db.query(Frame).filter(Frame.embedding_json.isnot(None)).all()
     points, skipped = [], 0
     for frame in frames:

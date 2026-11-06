@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.9.0 — 2026-11-06 (Phase 7 DB/infra hardening)
+
+- **Alembic-only schema (H2):** the app no longer calls `create_all` anywhere on its path — `run_migrations()` (alembic upgrade head) runs at import and at startup, and `backend/entrypoint.sh` runs migrations before the server in Docker (verified end-to-end on a scratch DB). Migration v4 adds composite indexes `captions/detections/frames(video_id, timestamp_seconds)` + `processing_jobs.celery_task_id`.
+- **Postgres pooling (M1):** bounded pool (size 5, overflow 10, timeout 30s, recycle 1800s, pre-ping) for Postgres URLs; SQLite keeps its default. Also fixed a latent crash: SQLAlchemy 2.x maps bare `postgresql://` to the psycopg3 driver, which isn't installed — the app now normalises it to `postgresql+psycopg2://` (one helper used by the engine, alembic env, and the migration runner).
+- **Backup/restore (tested):** `scripts/backup.sh` (pg_dump + storage tarball + Qdrant snapshot + row-count manifest) and `scripts/restore.sh` (restores into a target DB + storage dir, verifies every row count, exits non-zero on mismatch). Tested live: seeded 1 video / 2 frames / 2 captions / 2 detections / 1 event / 1 user, backed up, restored into `visioniq_restore` — all counts matched.
+- **Qdrant payload indexes:** `ensure_qdrant_collection` now creates indexes on `owner_id`, `video_id`, `timestamp_seconds` (idempotent, also repairs older collections); `reindex_qdrant` applies them too. Verified live: all three indexed, 41 points.
+- **Celery reliability (M10/M11):** soft/hard time limits (1800s/2100s), `result_expires` 24h, dispatch stores the Celery task id on the job, `task_failure` signal handler marks the DB job failed when a task dies outside the pipeline (worker crash, hard limit). Startup recovery now only fails jobs untouched for `RECOVERY_GRACE_SECONDS` (10 min) — a recently queued job is left alone.
+- **Token pruning (M4):** `prune_expired_tokens` (expired revoked JWTs, used/expired reset tokens) runs at startup.
+- **CI integration job:** Postgres 16 / Redis 7 / Qdrant 1.20.0 service containers + `pytest -m integration`; `integration` marker added to pytest.ini. New tests: `test_postgres.py` (migrations on live Postgres incl. downgrade/upgrade reversibility, pool config in a subprocess, recovery grace, token pruning) and `test_celery_reliability.py` (time-limit config, task_failure handler, poison video via eager Celery ends failed with task id stored). Full suite: **78 tests pass** (plus 1 real-VLM e2e, run separately).
+
 ## v0.8.0 — 2026-11-06 (Phase 6 event engine)
 
 - **Zones/ROI:** `zones` table + Alembic migration v3 (also adds `zone_name`, `track_id`, `label`, `evidence_clip_start/end` to events; verified up/down/up on a scratch DB). API: `POST/GET/DELETE /videos/{id}/zones` (owner-scoped, geometry validated 0..1, x1<x2, y1<y2).

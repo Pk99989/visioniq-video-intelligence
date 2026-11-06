@@ -31,7 +31,18 @@ def dispatch(video_id: int, background=None) -> None:
     if settings.WORKER_MODE == "celery":
         from .celery_app import process_video_task
 
-        process_video_task.delay(video_id)
+        result = process_video_task.delay(video_id)
+        # M10: keep the Celery task id on the job so a stuck job can
+        # be reconciled against the result backend.
+        db = SessionLocal()
+        try:
+            job = (db.query(ProcessingJob).filter_by(video_id=video_id)
+                   .order_by(ProcessingJob.id.desc()).first())
+            if job:
+                job.celery_task_id = result.id
+                db.commit()
+        finally:
+            db.close()
         return
     if background is not None:
         background.add_task(process_video, video_id)
@@ -142,8 +153,19 @@ def process_video(video_id: int) -> None:
 def recover_stuck_jobs(db: Session) -> int:
     """Startup recovery: jobs left running/queued by a crash are marked
     failed (with a clear message) so the user can retry them explicitly
-    instead of watching a video stuck at 'processing' forever."""
-    stuck = db.query(ProcessingJob).filter(ProcessingJob.status.in_(["running", "queued"])).all()
+    instead of watching a video stuck at 'processing' forever.
+
+    M11: only jobs whose updated_at is older than the grace period
+    (RECOVERY_GRACE_SECONDS, default 10 min) are failed. A job that
+    was queued or started moments before the backend restarted may
+    still be legitimately in flight — failing it would lose real work.
+    """
+    from datetime import timedelta
+
+    cutoff = datetime.utcnow() - timedelta(seconds=settings.RECOVERY_GRACE_SECONDS)
+    stuck = (db.query(ProcessingJob)
+             .filter(ProcessingJob.status.in_(["running", "queued"]))
+             .filter(ProcessingJob.updated_at < cutoff).all())
     for job in stuck:
         job.status = "failed"
         job.error_message = "Recovered after restart: job was interrupted. Use retry to re-run it."

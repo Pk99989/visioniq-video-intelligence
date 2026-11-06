@@ -86,6 +86,18 @@ class Settings:
     # "Xenova/ms-marco-MiniLM-L-6-v2" (~80 MB download on first use).
     # When the model cannot load, search keeps the hybrid order.
     RERANKER_MODEL: str = _env("RERANKER_MODEL", "")
+    # Phase 7 (v0.9.0): Postgres connection pooling (M1). SQLite keeps
+    # the single-connection default; Postgres gets a small bounded
+    # pool so concurrent requests don't open unbounded connections.
+    DB_POOL_SIZE: int = _env_int("DB_POOL_SIZE", 5)
+    DB_POOL_MAX_OVERFLOW: int = _env_int("DB_POOL_MAX_OVERFLOW", 10)
+    DB_POOL_TIMEOUT: int = _env_int("DB_POOL_TIMEOUT", 30)
+    DB_POOL_RECYCLE: int = _env_int("DB_POOL_RECYCLE", 1800)
+    # Phase 7 (M11): startup recovery only fails jobs whose updated_at
+    # is older than this — a recently queued/running job may still be
+    # legitimately in flight when the backend restarts.
+    RECOVERY_GRACE_SECONDS: int = _env_int("RECOVERY_GRACE_SECONDS", 600)
+
     # Phase 6 (v0.8.0): zone event engine. A track that stays inside a
     # zone continuously for EVENT_DWELL_SECONDS fires a dwell event;
     # staying for EVENT_LOITER_SECONDS fires a "possible loitering"
