@@ -123,6 +123,31 @@ class Event(Base):
     timestamp_seconds = Column(Float, nullable=False)
     verified = Column(Boolean, default=False, nullable=False)
     evidence_frame_id = Column(Integer, ForeignKey("frames.id"), nullable=True)
+    # Phase 6: zone provenance + evidence clip window (served by the
+    # existing GET /videos/{id}/clip?start=&end= endpoint).
+    zone_name = Column(String(255), nullable=True)
+    track_id = Column(Integer, nullable=True)
+    label = Column(String(128), nullable=True)
+    evidence_clip_start = Column(Float, nullable=True)
+    evidence_clip_end = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Zone(Base):
+    """A named rectangular region of interest on a video (Phase 6).
+
+    Coordinates are normalised 0..1 relative to the video frame
+    (x1 < x2, y1 < y2). Zones belong to one video and are owner-scoped
+    through it; the event engine watches track centres crossing them.
+    """
+    __tablename__ = "zones"
+    id = Column(Integer, primary_key=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    x1 = Column(Float, nullable=False)
+    y1 = Column(Float, nullable=False)
+    x2 = Column(Float, nullable=False)
+    y2 = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

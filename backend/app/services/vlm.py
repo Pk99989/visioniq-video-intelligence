@@ -75,10 +75,10 @@ def _parse_structured(text: str) -> dict | None:
     }
 
 
-def _describe_with_vlm(frame_path: str) -> dict | None:
-    """One VLM call with retries. Returns the parsed structure, or the
-    model's raw text as an unstructured description when JSON parsing
-    fails, or None when the model never answered usefully."""
+def _ask_vlm(frame_path: str, prompt: str, max_tokens: int = 400) -> str | None:
+    """One VLM call with retries for an arbitrary text prompt. Returns
+    the model's raw reply text, or None when it never answered
+    usefully. Never raises."""
     if not settings.VLM_BASE_URL:
         return None
     try:
@@ -92,10 +92,10 @@ def _describe_with_vlm(frame_path: str) -> dict | None:
     body = {
         "model": settings.VLM_MODEL or "vision-model",
         "messages": [{"role": "user", "content": [
-            {"type": "text", "text": _JSON_PROMPT},
+            {"type": "text", "text": prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
         ]}],
-        "max_tokens": 400,
+        "max_tokens": max_tokens,
     }
     attempts = 1 + max(0, settings.VLM_MAX_RETRIES)
     last_error = "no attempt"
@@ -112,16 +112,11 @@ def _describe_with_vlm(frame_path: str) -> dict | None:
                 r.raise_for_status()
                 content = r.json()["choices"][0]["message"]["content"] or ""
             latency_ms = int((time.monotonic() - started) * 1000)
-            parsed = _parse_structured(content)
-            if parsed is not None:
-                logger.info("vlm ok model=%s latency_ms=%d attempts=%d structured=true",
-                            settings.VLM_MODEL, latency_ms, attempt)
-                return parsed
             raw = content.strip()
             if raw:
-                logger.info("vlm ok model=%s latency_ms=%d attempts=%d structured=false "
-                            "(malformed JSON, using raw text)", settings.VLM_MODEL, latency_ms, attempt)
-                return {"description": raw, "objects": [], "actions": []}
+                logger.info("vlm ok model=%s latency_ms=%d attempts=%d",
+                            settings.VLM_MODEL, latency_ms, attempt)
+                return raw
             last_error = "empty response"
         except (httpx.TimeoutException, httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
@@ -132,6 +127,50 @@ def _describe_with_vlm(frame_path: str) -> dict | None:
             time.sleep(settings.VLM_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)))
     logger.error("vlm failed model=%s attempts=%d last_error=%s",
                  settings.VLM_MODEL, attempts, last_error)
+    return None
+
+
+def _describe_with_vlm(frame_path: str) -> dict | None:
+    """One VLM caption call. Returns the parsed structure, or the
+    model's raw text as an unstructured description when JSON parsing
+    fails, or None when the model never answered usefully."""
+    content = _ask_vlm(frame_path, _JSON_PROMPT)
+    if content is None:
+        return None
+    parsed = _parse_structured(content)
+    if parsed is not None:
+        logger.info("vlm structured=true")
+        return parsed
+    raw = content.strip()
+    if raw:
+        logger.info("vlm structured=false (malformed JSON, using raw text)")
+        return {"description": raw, "objects": [], "actions": []}
+    return None
+
+
+def ask_yes_no(frame_path: str, question: str) -> bool | None:
+    """Ask the VLM a yes/no question about one frame (Phase 6 event
+    verification). Returns True for YES, False for NO, None when the
+    model did not answer or its answer was not a clear yes/no. The
+    prompt forces a single-word answer so small models stay parseable;
+    a "yes, ..." prefix still counts as yes."""
+    if settings.VLM_PROVIDER == "fallback" or not settings.VLM_BASE_URL:
+        return None
+    prompt = (
+        "Answer with only one word, YES or NO. "
+        f"{question} "
+        "Only answer from what is actually visible in the image; "
+        "if you cannot tell, answer NO."
+    )
+    reply = _ask_vlm(frame_path, prompt, max_tokens=10)
+    if reply is None:
+        return None
+    first = reply.strip().lower().split()[0].strip(".,!?:;") if reply.strip() else ""
+    if first == "yes":
+        return True
+    if first == "no":
+        return False
+    logger.warning("vlm yes/no unparseable reply=%r", reply[:80])
     return None
 
 

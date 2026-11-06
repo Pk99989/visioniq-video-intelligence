@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import SessionLocal, get_db
-from ..models import Alert, Caption, Detection, Event, Frame, ProcessingJob, Scene, User, Video
-from ..schemas import EventRuleIn, VideoOut
+from ..models import Alert, Caption, Detection, Event, Frame, ProcessingJob, Scene, User, Video, Zone
+from ..schemas import EventRuleIn, VideoOut, ZoneIn
 from ..security import create_stream_token, get_current_user, verify_stream_token, video_visible_to
 from ..services import clips as clips_svc
 from ..services import detection as detection_svc
@@ -299,9 +299,81 @@ def evaluate_events(video_id: int, rules: list[EventRuleIn],
 def get_events(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _get_video(db, video_id, user)
     evs = db.query(Event).filter_by(video_id=video_id).order_by(Event.timestamp_seconds).all()
-    return [{"id": e.id, "rule_name": e.rule_name, "title": e.title, "severity": e.severity,
-             "timestamp_seconds": e.timestamp_seconds, "verified": e.verified,
-             "description": e.description} for e in evs]
+    return [_event_out(e) for e in evs]
+
+
+def _event_out(e: Event) -> dict:
+    """Event payload, including Phase 6 zone provenance and the
+    evidence clip URL (served by the existing /clip endpoint)."""
+    out = {"id": e.id, "rule_name": e.rule_name, "title": e.title, "severity": e.severity,
+           "timestamp_seconds": e.timestamp_seconds, "verified": e.verified,
+           "description": e.description, "zone_name": e.zone_name,
+           "track_id": e.track_id, "label": e.label,
+           "evidence_frame_id": e.evidence_frame_id, "evidence_clip_url": None}
+    if e.evidence_clip_start is not None and e.evidence_clip_end is not None:
+        out["evidence_clip_url"] = (
+            f"/api/v1/videos/{e.video_id}/clip"
+            f"?start={e.evidence_clip_start:.1f}&end={e.evidence_clip_end:.1f}")
+    return out
+
+
+@router.post("/{video_id}/zones", status_code=201)
+def create_zone(video_id: int, zone: ZoneIn,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a named region of interest on a video (Phase 6)."""
+    _get_video(db, video_id, user)
+    row = Zone(video_id=video_id, name=zone.name, x1=zone.x1, y1=zone.y1,
+               x2=zone.x2, y2=zone.y2)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "video_id": video_id, "name": row.name,
+            "x1": row.x1, "y1": row.y1, "x2": row.x2, "y2": row.y2}
+
+
+@router.get("/{video_id}/zones")
+def list_zones(video_id: int, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    _get_video(db, video_id, user)
+    rows = db.query(Zone).filter_by(video_id=video_id).order_by(Zone.id).all()
+    return [{"id": z.id, "name": z.name, "x1": z.x1, "y1": z.y1,
+             "x2": z.x2, "y2": z.y2} for z in rows]
+
+
+@router.delete("/{video_id}/zones/{zone_id}")
+def delete_zone(video_id: int, zone_id: int,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_video(db, video_id, user)
+    row = db.get(Zone, zone_id)
+    if not row or row.video_id != video_id:
+        raise HTTPException(404, "Zone not found")
+    db.delete(row)
+    db.commit()
+    return {"deleted": zone_id}
+
+
+@router.post("/{video_id}/events/evaluate-zones")
+def evaluate_zone_events(video_id: int, user: User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    """Run the Phase 6 zone engine over this video's stored zones and
+    tracked detections. Returns the events it created."""
+    _get_video(db, video_id, user)
+    zones = [{"name": z.name, "x1": z.x1, "y1": z.y1, "x2": z.x2, "y2": z.y2}
+             for z in db.query(Zone).filter_by(video_id=video_id).all()]
+    created = events_svc.evaluate_zones(db, video_id, zones)
+    return [_event_out(e) for e in created]
+
+
+@router.post("/{video_id}/events/{event_id}/verify")
+def verify_event_endpoint(video_id: int, event_id: int,
+                          user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Ask the VLM to confirm one event from its evidence frame."""
+    _get_video(db, video_id, user)
+    event = db.get(Event, event_id)
+    if not event or event.video_id != video_id:
+        raise HTTPException(404, "Event not found")
+    verified, message = events_svc.verify_event(db, event)
+    return {"id": event.id, "verified": verified, "message": message}
 
 
 @router.get("/{video_id}/alerts")

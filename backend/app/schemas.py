@@ -2,7 +2,7 @@
 JSON beyond these models."""
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RegisterIn(BaseModel):
@@ -86,6 +86,25 @@ class EventRuleIn(BaseModel):
     rule_type: str  # scene_duration_gt | caption_keyword | detection_label
     value: str
     severity: str = "info"
+
+
+class ZoneIn(BaseModel):
+    """A rectangular region of interest, normalised 0..1 (Phase 6)."""
+    name: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+    @model_validator(mode="after")
+    def _check_box(self):
+        for f in ("x1", "y1", "x2", "y2"):
+            v = getattr(self, f)
+            if not 0.0 <= v <= 1.0:
+                raise ValueError(f"{f} must be between 0 and 1")
+        if not (self.x1 < self.x2 and self.y1 < self.y2):
+            raise ValueError("need x1 < x2 and y1 < y2")
+        return self
 
 
 class ReportIn(BaseModel):

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.8.0 — 2026-11-06 (Phase 6 event engine)
+
+- **Zones/ROI:** `zones` table + Alembic migration v3 (also adds `zone_name`, `track_id`, `label`, `evidence_clip_start/end` to events; verified up/down/up on a scratch DB). API: `POST/GET/DELETE /videos/{id}/zones` (owner-scoped, geometry validated 0..1, x1<x2, y1<y2).
+- **Zone engine:** `evaluate_zones` watches track centres against zones — `zone_enter` / `zone_exit` on boundary crossings, `zone_dwell` after `EVENT_DWELL_SECONDS` (default 5s) continuous presence, `zone_loitering` after `EVENT_LOITER_SECONDS` (default 30s) as a *candidate* (verified=False, "Candidate only — needs VLM verification"). One event per stay; a track still inside at its last detection gets no invented exit. Suppression key extended with zone_name/track_id so zones/tracks don't suppress each other.
+- **Evidence clips:** every zone event carries a clip window `[ts-2s, ts+3s]` (configurable, clamped to the video) served by the existing `GET /videos/{id}/clip` endpoint; responses include `evidence_clip_url`.
+- **VLM verification:** `POST /videos/{id}/events/{event_id}/verify` asks the VLM a yes/no question about the evidence frame (`vlm.ask_yes_no`, new shared `_ask_vlm` retry helper). YES marks verified; NO annotates the description and leaves it unverified; exit events are reported as not VLM-verifiable (a frame cannot confirm an absence); no VLM configured leaves it unverified with a clear reason.
+- **Tests:** 8 new in `tests/test_events.py` (seeded detections, exact geometry). Full suite: **71 tests pass** (plus 1 real-VLM e2e, run separately). Fixed along the way: an edit had dropped `evaluate_rules`' return value (test_full_flow caught it).
+
 ## v0.7.0 — 2026-11-06 (Phase 5 agent + MCP)
 
 - **8 tools:** added `detection_analytics` (counts by label, track count, dwell stats), `timeline_analysis` (scene-by-scene captions + detections), `report_generation` (same record as `POST /reports`, shared `create_report_record` service). Registry `agent.TOOLS` is the single source of truth, now with `inputSchema` per tool.
