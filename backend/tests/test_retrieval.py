@@ -146,6 +146,27 @@ def test_qdrant_failure_falls_back_to_db_scan(monkeypatch):
     monkeypatch.setattr(settings, "QDRANT_URL", ":memory:")
 
 
+def test_empty_qdrant_index_falls_back_to_db_scan(monkeypatch):
+    """Regression (Phase 5): a Qdrant that is configured but holds no
+    points — fresh in-memory client, or a restarted server with a
+    wiped volume — must not make search return nothing when the DB
+    has matching captions. The DB scan is the safety net."""
+    monkeypatch.setattr(settings, "QDRANT_URL", ":memory:")
+    monkeypatch.setattr(settings, "RERANKER_MODEL", "")
+    retrieval._qdrant_clients.clear()  # fresh, empty in-memory client
+    h = _auth("ret-empty@test.com")
+    _upload(h)
+    # The upload upserted into the (now cleared) client; search sees
+    # an empty index and must fall back.
+    retrieval._qdrant_clients.clear()
+    db = _db()
+    uid = _user_id(db, "ret-empty@test.com")
+    hits = search_frames(db, "bus", user_id=uid, top_k=5)
+    db.close()
+    assert hits, "empty Qdrant index made search return nothing"
+    assert all(x["video_id"] is not None for x in hits)
+
+
 def test_compress_hits_dedupes_same_moment():
     hits = [
         {"video_id": 1, "frame_id": 1, "timestamp_seconds": 1.0, "score": 0.9,

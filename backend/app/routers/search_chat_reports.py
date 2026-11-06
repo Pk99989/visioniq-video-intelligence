@@ -95,18 +95,8 @@ def create_report(body: ReportIn, user: User = Depends(get_current_user), db: Se
     if body.kind not in ("summary", "incident", "timeline") or body.format not in ("json", "pdf"):
         raise HTTPException(400, "Invalid kind or format")
     data = reports_svc.build_report_data(db, video, body.kind)
-    rdir = settings.STORAGE_DIR / "reports" / str(video.id)
-    if body.format == "json":
-        path = reports_svc.write_json_report(data, rdir / f"report_{body.kind}.json")
-    else:
-        path = reports_svc.write_pdf_report(data, rdir / f"report_{body.kind}.pdf")
-    report = Report(video_id=video.id, owner_id=user.id, kind=body.kind,
-                    file_path=str(path), format=body.format)
-    db.add(report)
-    db.commit()
-    db.refresh(report)
-    return {"id": report.id, "video_id": video.id, "kind": body.kind, "format": body.format,
-            "download_url": f"/api/v1/reports/{report.id}/download", "data": data}
+    return reports_svc.create_report_record(db, video, user.id, body.kind,
+                                            body.format, settings.STORAGE_DIR)
 
 
 @router.get("/reports/{report_id}/download")

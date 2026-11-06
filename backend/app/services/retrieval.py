@@ -6,8 +6,9 @@ Read path: Qdrant (when QDRANT_URL is set) returns candidate frame ids
 with vector scores -> the DB enriches them (caption text, frame path,
 detections — the DB is the source of truth) -> hybrid score (0.6 cosine
 + 0.4 keyword + label bonus + phrase boost) -> optional cross-encoder
-rerank -> near-duplicate compression -> top_k. When Qdrant is absent
-or errors, the same scoring runs over a DB scan of the user's captions.
+rerank -> near-duplicate compression -> top_k. When Qdrant is absent,
+errors, or returns no usable points (empty or drifted index), the same
+scoring runs over a DB scan of the user's captions.
 
 Embedding granularity decision (audit M9): one caption vector is
 stored per *frame* (the same scene vector on every frame of the
@@ -403,15 +404,14 @@ def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_s
     qdrant_limit = max(100, candidate_limit)
 
     scored = []
-    qdrant_used = False
-    if settings.QDRANT_URL:
+    qdrant_configured = bool(settings.QDRANT_URL)
+    if qdrant_configured:
         try:
             points = qdrant_search(
                 qvec, top_k=qdrant_limit,
                 user_id=user_id, video_id=video_id, label=label,
                 provider=provider, start_seconds=start_seconds,
                 end_seconds=end_seconds)
-            qdrant_used = True
             frame_ids = [p.id for p in points]
             caps = (db.query(Caption).filter(Caption.frame_id.in_(frame_ids)).all()
                     if frame_ids else [])
@@ -432,9 +432,13 @@ def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_s
             # and fall back to the DB scan instead of failing search.
             logger.warning("qdrant search failed, falling back to DB scan: %s", exc)
             scored = []
-    if not qdrant_used:
-        # No Qdrant, or Qdrant errored (logged above): same scoring
-        # over a DB scan of the user's captions.
+    if not scored:
+        # No Qdrant, Qdrant errored, or Qdrant returned no usable
+        # points (empty or drifted index — e.g. a fresh in-memory
+        # client, or a restarted server with a wiped volume). The DB
+        # scan is the source of truth, so it runs as the safety net;
+        # a Qdrant that misses hits the DB finds is drift, not a
+        # correct empty answer.
         caps = _db_candidates(db, user_id, video_id, label, provider,
                               start_seconds, end_seconds)
         all_labels = set()
@@ -444,6 +448,11 @@ def search_frames(db: Session, query: str, video_id=None, top_k: int = 10, min_s
         query_terms = expand_query_terms(query, all_labels)
         for cap in caps:
             scored.append(_score_caption(cap, qvec, query_terms, query))
+        if qdrant_configured and scored:
+            logger.warning(
+                "qdrant returned no usable points but the DB scan found %d "
+                "hit(s) — the vector index may be stale; run "
+                "scripts/reindex_qdrant.py", len(scored))
 
     scored = [h for h in scored if h["score"] >= min_score]
     scored.sort(key=lambda h: h["score"], reverse=True)

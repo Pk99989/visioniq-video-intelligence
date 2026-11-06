@@ -10,6 +10,29 @@ from ..models import Event, Video
 from .summarization import summarize_video
 
 
+def create_report_record(db: Session, video: Video, owner_id: int, kind: str,
+                         format: str, storage_dir) -> dict:
+    """Build the report, write the file, persist the Report row, and
+    return the API-shaped payload. Shared by the /reports endpoint
+    and the agent's report_generation tool so the two can never drift
+    apart (same file layout, same download URL)."""
+    from ..models import Report
+
+    data = build_report_data(db, video, kind)
+    rdir = Path(storage_dir) / "reports" / str(video.id)
+    if format == "json":
+        path = write_json_report(data, rdir / f"report_{kind}.json")
+    else:
+        path = write_pdf_report(data, rdir / f"report_{kind}.pdf")
+    report = Report(video_id=video.id, owner_id=owner_id, kind=kind,
+                    file_path=str(path), format=format)
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return {"id": report.id, "video_id": video.id, "kind": kind, "format": format,
+            "download_url": f"/api/v1/reports/{report.id}/download", "data": data}
+
+
 def build_report_data(db: Session, video: Video, kind: str) -> dict:
     summary = summarize_video(db, video.id, length="medium")
     events = (db.query(Event).filter_by(video_id=video.id)
