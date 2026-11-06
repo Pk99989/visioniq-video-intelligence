@@ -1,0 +1,38 @@
+# Observability stack (Phase 10) — Prometheus + Grafana for VisionIQ.
+# NOT part of the laptop default: run it alongside the full stack:
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+# Prometheus: http://localhost:9090  |  Grafana: http://localhost:3001 (admin/admin)
+# Grafana ships with the VisionIQ dashboard pre-provisioned
+# (observability/grafana/dashboards/visioniq.json).
+services:
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    container_name: visioniq-prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.6.2
+    container_name: visioniq-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:

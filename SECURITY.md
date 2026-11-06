@@ -59,5 +59,8 @@
   cookie) — moving the access token out of localStorage is a future
   item (M13 follow-up). No email service is wired yet, so password
   reset tokens are only usable via the dev flag or direct DB access.
+  `/metrics` is unauthenticated by design — restrict it at the reverse
+  proxy / firewall to the monitoring network in production
+  (`METRICS_ENABLED=0` turns it off).
 - **Reporting**: if you find a vulnerability, do not open a public issue
   with exploit details; contact the repo owner first.

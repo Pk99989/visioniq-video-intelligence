@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.12.0 — 2026-11-06 (Phase 10 observability)
+
+- **Structured JSON logs:** one JSON object per line on stdout (`ts`/`level`/`logger`/`msg`/`request_id`/`job_id` + scalar extras). Request-ID middleware mints or honours `X-Request-ID` and echoes it on the response; the pipeline binds `job_id` (and the upload request's id — via contextvar in-process, via Celery task headers in celery mode) to every log line. `LOG_FORMAT=text` for human-readable dev logs; `PYTHONUNBUFFERED=1` in the Dockerfile so lines flush immediately. **Bug found and fixed while doing this:** alembic's logging config (from `alembic.ini`) replaces the root handlers, sets the root level to WARNING, and disables all loggers not named in the file — after a migration run, no app INFO log and no uvicorn access log was ever emitted. `run_migrations()` now re-applies the logging config after every upgrade (re-enabling the disabled loggers and routing uvicorn's loggers through the JSON handler).
+- **Prometheus metrics:** `GET /metrics` — HTTP request count + latency histogram (labelled by route template, never raw path), pipeline duration + jobs by outcome, per-frame detection latency, VLM caption latency by provider, Qdrant search latency, Celery queue depth (`-1` = unknown on the laptop profile, never a misleading 0), storage disk free/total with a warning below `STORAGE_WARN_FREE_PCT`, DB pool gauges, GPU utilisation from `nvidia-smi` when present, plus the default process/GC metrics. `METRICS_ENABLED=0` turns it off. Unauthenticated by design (documented: restrict at the reverse proxy in production).
+- **Prometheus + Grafana stack:** `docker-compose.observability.yml` (Prometheus + Grafana with the VisionIQ dashboard pre-provisioned: request rate, p95 latency, processing duration, jobs by outcome, detection/VLM/Qdrant latency, queue depth, storage, RSS). Honest status: configs parse, but no Docker on this VM, so the stack has not been run here and there is no dashboard screenshot yet (Phase 12 item).
+- **Profiling:** `scripts/profile_processing.py` + results in `docs/benchmarks/2026-11-06-phase10-profiling.md` — 120 s video: ONNX inference 54% (402 ms/frame on CPU, a hardware lever, not a code hotspot), ffmpeg decode 25%, NMS argmax 8%. No code change from the profile.
+- **Docs:** `docs/OBSERVABILITY.md` (logs, metrics table, stack, profiling). `.env.example` gains LOG_LEVEL/LOG_FORMAT/METRICS_ENABLED/STORAGE_WARN_FREE_PCT.
+- Full suite: **108 backend tests pass** (+ 6 new observability tests) + 10 Vitest + 1 e2e + 1 real-VLM e2e.
+
 ## v0.11.0 — 2026-11-06 (Phase 9 security hardening)
 
 - **H5 — PyJWT migration:** the hand-rolled HMAC JWT is gone. `PyJWT==2.10.1` enforces HS256, signature, `exp`/`iat`/`iss="visioniq"`/`aud="visioniq"`/`jti` (required claims). Pre-v0.11.0 tokens are rejected (users re-login once). Tests: alg=none, tampered payload, expired, wrong iss/aud, missing claims — all 401.

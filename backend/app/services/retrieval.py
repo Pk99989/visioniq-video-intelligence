@@ -254,11 +254,19 @@ def qdrant_search(vector: list[float], top_k: int = 10, client=None, **filters):
     """Vector search against Qdrant with payload filters; returns
     scored points. Kept as the low-level helper; search_frames is the
     read path that enriches and scores them."""
+    import time
+
+    from . import metrics
+
     client = client or get_qdrant_client()
     ensure_qdrant_collection(client)
-    return client.query_points(
-        settings.QDRANT_COLLECTION, query=vector, limit=top_k,
-        query_filter=_qdrant_filter(**filters), with_payload=True).points
+    start = time.perf_counter()
+    try:
+        return client.query_points(
+            settings.QDRANT_COLLECTION, query=vector, limit=top_k,
+            query_filter=_qdrant_filter(**filters), with_payload=True).points
+    finally:
+        metrics.QDRANT_SEARCH_DURATION.observe(time.perf_counter() - start)
 
 
 def reindex_qdrant(db: Session) -> dict:

@@ -84,7 +84,11 @@ def upload_video(background: BackgroundTasks, title: str = Form(...), file: Uplo
     db.add(ProcessingJob(video_id=video.id, status="queued"))
     db.commit()
     db.refresh(video)
-    worker.dispatch(video.id, background)
+    # Phase 10: the upload request's id travels with the job so the
+    # pipeline's log lines can be traced back to this request.
+    from ..services.logging_config import get_request_id
+
+    worker.dispatch(video.id, background, request_id=get_request_id())
     db.refresh(video)
     return video
 
@@ -144,7 +148,9 @@ def retry_video(background: BackgroundTasks, video_id: int,
     db.add(ProcessingJob(video_id=video.id, status="queued"))
     video.status = "uploaded"
     db.commit()
-    worker.dispatch(video.id, background)
+    from ..services.logging_config import get_request_id
+
+    worker.dispatch(video.id, background, request_id=get_request_id())
     db.refresh(video)
     return video
 

@@ -235,8 +235,17 @@ def _template_caption(scene: dict) -> str:
 def caption_scene(scene: dict, detections: list[str], frame_path: str) -> tuple[str, str]:
     """Returns (caption_text, provider). Provider is the VLM provider
     name on real model output, else 'detection' or 'fallback'."""
+    import time
+
+    from . import metrics
+
     if settings.VLM_PROVIDER in ("openai_compatible", "nvidia_nim", "ollama"):
-        result = _describe_with_vlm(frame_path)
+        start = time.perf_counter()
+        try:
+            result = _describe_with_vlm(frame_path)
+        finally:
+            metrics.VLM_DURATION.labels(provider=settings.VLM_PROVIDER).observe(
+                time.perf_counter() - start)
         if result is not None:
             text = result["description"]
             if result["objects"]:

@@ -51,6 +51,13 @@ class Settings:
     # /api/v1/auth/refresh. The old 24 h access token is gone.
     JWT_EXPIRE_MINUTES: int = _env_int("JWT_EXPIRE_MINUTES", 60)
     REFRESH_TOKEN_DAYS: int = _env_int("REFRESH_TOKEN_DAYS", 7)
+    # Phase 10 (observability): structured JSON logs (LOG_FORMAT=json
+    # or text), log level, /metrics switch, and the free-space
+    # threshold below which the disk probe logs a warning.
+    LOG_LEVEL: str = _env("LOG_LEVEL", "INFO")
+    LOG_FORMAT: str = _env("LOG_FORMAT", "json")
+    METRICS_ENABLED: bool = _env("METRICS_ENABLED", "1") == "1"
+    STORAGE_WARN_FREE_PCT: float = _env_float("STORAGE_WARN_FREE_PCT", 10.0)
     # Phase 9 (M5): fixed-window rate limits on auth endpoints
     # (per IP, and per email for login). Redis-backed; when Redis is
     # unreachable the limiter fails open and logs a warning, so the

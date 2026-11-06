@@ -389,9 +389,18 @@ def detect_frame(frame_path: str, conf: float | None = None,
     if not status["available"]:
         return []
     conf = settings.YOLO_CONF if conf is None else conf
-    if status["provider"] == "yolo-onnx":
-        return _detect_onnx(frame_path, conf, tracker, timestamp)
-    return _detect_ultralytics(frame_path, conf)
+    # Phase 10: per-frame inference latency.
+    import time
+
+    from . import metrics
+
+    start = time.perf_counter()
+    try:
+        if status["provider"] == "yolo-onnx":
+            return _detect_onnx(frame_path, conf, tracker, timestamp)
+        return _detect_ultralytics(frame_path, conf)
+    finally:
+        metrics.DETECTION_DURATION.observe(time.perf_counter() - start)
 
 
 def annotate_frame(frame_path: str, detections: list[dict], out_path: str) -> str:

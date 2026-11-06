@@ -1,10 +1,11 @@
 # PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 9 complete (security hardening), verified 2026-11-06.
-  Phases 0–8 done: audit, real VLM (moondream, CPU), adaptive sampling,
+- **Current phase**: Phase 10 complete (observability), verified 2026-11-06.
+  Phases 0–9 done: audit, real VLM (moondream, CPU), adaptive sampling,
   CV calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
-  event engine, DB/infra hardening, frontend upgrades. Next: Phase 10
-  observability (structured logs, metrics, Prometheus/Grafana).
+  event engine, DB/infra hardening, frontend upgrades, security
+  hardening. Next: Phase 11 test expansion (conftest helpers, coverage
+  gate).
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -51,6 +52,19 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v0.12.0 (Phase 10 observability)**: structured JSON logs
+  (request_id/job_id on every line; request-ID middleware; job id via
+  contextvar/Celery headers); `GET /metrics` (HTTP count/latency by
+  route template, pipeline duration/jobs, detection/VLM/Qdrant
+  latency, Celery queue depth -1=unknown, storage disk gauges,
+  DB pool, GPU via nvidia-smi, process metrics); Prometheus + Grafana
+  compose stack with a pre-provisioned 7-panel dashboard (configs
+  parse — NOT run here, no Docker on this VM, no screenshot yet);
+  profiling (120 s video: ONNX 54% @402 ms/frame CPU, ffmpeg 25%,
+  NMS 8% — no code change); BUG FIXED: alembic's logging config was
+  resetting the root level to WARNING and disabling uvicorn's loggers
+  after migrations (run_migrations now re-applies logging config).
+  108 backend tests pass (+ 6 observability) + 10 Vitest + 1 e2e.
 - **v0.11.0 (Phase 9 security)**: PyJWT 2.10.1 (HS256, exp/iat/iss/aud/
   jti enforced; pre-v0.11.0 tokens rejected); `scripts/make_admin.py`;
   Redis rate limits (login 10/min per IP+email, register/reset 5/min
@@ -82,6 +96,19 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v0.12.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **108 passed** (incl. 6 observability tests: /metrics counters
+    after upload+search, request-ID echo, JSON formatter fields,
+    Celery queue -1, METRICS_ENABLED=0 → 404).
+  - Live smoke (uvicorn :8002, sync processing): `/metrics` serves
+    real counters after an upload (`jobs_total{status="done"} 1`,
+    detection count 2); pipeline log line carries
+    `request_id` + `job_id`; `X-Request-ID` echoed.
+  - Profiling: 120 s video processed to ready; cProfile top: ONNX
+    45.0 s (54%), ffmpeg waits 20.8 s (25%), NMS argmax 6.4 s (8%).
+  - Frontend: `npm test` (Vitest) → **10 passed**; `npm run build`
+    (Next 14.2.35) → **compiled successfully, 16 routes**.
 - **Tests executed (2026-11-06, v0.11.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **102 passed** (incl. 22 security tests: JWT attacks, refresh
@@ -142,8 +169,9 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 10: observability (structured logs, request IDs, /metrics
-     Prometheus, Grafana compose profile).
+  1. Phase 11: test expansion (shared conftest helpers per L12, repo-local
+     fixtures replacing /tmp ones, coverage gate ~70% on app/services
+     in CI).
   2. On the user's WSL machine: `docker compose -f docker-compose.laptop.yml up --build`,
      upload a real video, confirm the flow in the browser.
   3. `gh auth login` then create the GitHub repo and push.

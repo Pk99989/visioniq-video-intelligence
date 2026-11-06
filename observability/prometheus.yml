@@ -1,0 +1,10 @@
+# Prometheus scrape config for VisionIQ (Phase 10).
+# The backend exposes /metrics (unauthenticated by design — see
+# docs/OBSERVABILITY.md); inside the compose network it is reached
+# as http://backend:8000/metrics.
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: visioniq
+    static_configs:
+      - targets: ["backend:8000"]

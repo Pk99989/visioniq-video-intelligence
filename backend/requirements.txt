@@ -22,6 +22,8 @@ fastembed==0.9.1
 # driver was missing from this file until v0.3.1 (live Postgres test
 # 2026-11-06 failed to import it). SQLite (laptop profile) doesn't need it.
 psycopg2-binary==2.9.10
+# Phase 10 (observability): Prometheus metrics on /metrics.
+prometheus-client==0.21.1
 # Optional, only if you want the ultralytics .pt path instead of ONNX:
 # ultralytics==8.3.200  (needs torch, ~2 GB; use yolov8n.onnx instead on a laptop)
 # sentence-transformers==5.1.2  (needs torch; fastembed is the light alternative)

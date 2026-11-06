@@ -86,8 +86,11 @@ def _mark_job_failed(sender=None, task_id=None, args=None, exception=None, **kwa
 def process_video_task(self, video_id: int):
     from . import worker
 
+    # Phase 10: the upload request's id travels in the task headers
+    # so worker log lines carry it (see worker.dispatch).
+    request_id = (self.request.headers or {}).get("request_id")
     try:
-        worker.process_video(video_id)
+        worker.process_video(video_id, request_id=request_id)
     except Exception as exc:  # noqa: BLE001 - Celery retries, then the
         # pipeline itself already records the failure in the DB.
         raise self.retry(exc=exc, countdown=10)
