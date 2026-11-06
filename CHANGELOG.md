@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## v0.6.0 — 2026-11-06 (Phase 4 RAG upgrade)
+
+- **Qdrant read path:** search now queries Qdrant first (owner-scoped payload filter, label/provider/timestamp/video filters) and enriches hits from the DB; on any Qdrant error it logs a warning and falls back to the DB scan. Upsert failures are logged, not swallowed. `scripts/reindex_qdrant.py` rebuilds the collection from the DB.
+- **Filters in the API:** `POST /api/v1/search` accepts `label`, `provider`, `start_seconds`, `end_seconds`, `rerank`.
+- **Cross-encoder reranker:** fastembed `TextCrossEncoder` (MiniLM-L-6-v2) behind `RERANKER_MODEL`, off by default; blends 0.5 hybrid + 0.5 normalised rerank score. Local-cache-first load (the hub API calls have no timeout and the proxy stalls them).
+- **Query handling:** stopwords removed before keyword scoring (a test was relying on "this"/"is" overlap — fixed to a content question); synonyms expand only to labels actually detected in the video.
+- **Evidence quality:** near-duplicate hits compressed (same caption, ±2 s), and the agent validates every citation against a real stored frame before answering.
+- **Eval (54 questions, moondream captions):** `docs/benchmarks/rag-eval-2026-11-06.md` — Qdrant == DB scan (Recall@5 0.66, MRR 0.48), reranker slightly hurts (Recall@1 0.37→0.32 at 27× latency) so it stays off by default; faithfulness 1.0, relevance 0.95. Weak spot: negatives correct only 0.38 with hash embeddings.
+- Full suite: **46 tests pass** (plus 1 real-VLM e2e, run separately).
+
 ## v0.5.0 — 2026-11-06 (Phase 3 computer vision)
 
 - **Detection calibration:** `YOLO_CONF`, `YOLO_NMS`, `YOLO_CLASSES` allow-list, per-class confidence overrides (`YOLO_CLASS_CONF="person:0.5,bus:0.3"`), `YOLO_MIN_TRACK_IOU`, `YOLO_TRACK_MAX_MISSED`, `YOLO_TRACK_MAX_AGE_SECONDS`, `YOLO_EXECUTION_PROVIDERS` (CUDA tried first, CPU fallback). All env-overridable, all reported by `/health` under `detection`.

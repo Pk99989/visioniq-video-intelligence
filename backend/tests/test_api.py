@@ -73,7 +73,7 @@ def test_full_flow():
     assert r.json()[0]["timestamp_seconds"] >= 0
 
     r = client.post("/api/v1/chat", headers=headers,
-                    json={"question": "What is in this video?", "video_id": vid})
+                    json={"question": "Describe the scene", "video_id": vid})
     assert r.status_code == 200 and len(r.json()["citations"]) >= 1
 
     r = client.post("/api/v1/chat", headers=headers,

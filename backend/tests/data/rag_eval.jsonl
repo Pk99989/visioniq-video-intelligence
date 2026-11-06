@@ -1,0 +1,54 @@
+{"id": "bus-01", "question": "Is there a bus in the video?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "bus-02", "question": "What colour is the bus?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["blue", "bus"], "type": "positive"}
+{"id": "bus-03", "question": "Are people walking on the sidewalk?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["people", "walking", "sidewalk"], "type": "positive"}
+{"id": "bus-04", "question": "How many people are walking near the bus?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["three", "people"], "type": "positive"}
+{"id": "bus-05", "question": "Is someone wearing a red shirt?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["red", "shirt"], "type": "positive"}
+{"id": "bus-06", "question": "Are there potted plants near the bus?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["potted", "plant"], "type": "positive"}
+{"id": "bus-07", "question": "Is the bus parked on the street?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus", "parked", "street"], "type": "positive"}
+{"id": "bus-08", "question": "Show me the blue bus", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus", "blue"], "type": "positive"}
+{"id": "bus-09", "question": "What is happening on the sidewalk?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["people", "walking"], "type": "positive"}
+{"id": "bus-10", "question": "Is there a vehicle in the video?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "bus-11", "question": "Is there a dog in the video?", "video": "bus", "timestamp": 4.0, "expected_keywords": [], "type": "negative"}
+{"id": "bus-12", "question": "Is there a truck in the video?", "video": "bus", "timestamp": 4.0, "expected_keywords": [], "type": "negative"}
+{"id": "bus-13", "question": "Is there a cat in the video?", "video": "bus", "timestamp": 4.0, "expected_keywords": [], "type": "negative"}
+{"id": "bus-14", "question": "Are there children playing football?", "video": "bus", "timestamp": 4.0, "expected_keywords": [], "type": "negative"}
+{"id": "bus-15", "question": "Is there a bicycle on the street?", "video": "bus", "timestamp": 4.0, "expected_keywords": [], "type": "negative"}
+{"id": "bus-16", "question": "What vehicles are on the street?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "bus-17", "question": "Describe the street scene", "video": "bus", "timestamp": 4.0, "expected_keywords": ["bus", "people"], "type": "positive"}
+{"id": "bus-18", "question": "Is anyone crossing the road?", "video": "bus", "timestamp": 4.0, "expected_keywords": ["people", "walking"], "type": "positive"}
+{"id": "mov-01", "question": "Is there a truck in the traffic?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["truck"], "type": "positive"}
+{"id": "mov-02", "question": "What does the white truck say on it?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["skyline", "truck"], "type": "positive"}
+{"id": "mov-03", "question": "How many buses are on the street?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "mov-04", "question": "Is there a bus going to Geary?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "geary"], "type": "positive"}
+{"id": "mov-05", "question": "What vehicles are in the traffic?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "truck", "car"], "type": "positive"}
+{"id": "mov-06", "question": "Is there a car on the road?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["car"], "type": "positive"}
+{"id": "mov-07", "question": "Show me the street traffic", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "truck"], "type": "positive"}
+{"id": "mov-08", "question": "Is there a white bus in the traffic?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "white"], "type": "positive"}
+{"id": "mov-09", "question": "What is the big white vehicle in the middle?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["truck"], "type": "positive"}
+{"id": "mov-10", "question": "Are there traffic lights in the video?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["traffic"], "type": "positive"}
+{"id": "mov-11", "question": "Is there a dog in the traffic?", "video": "moving", "timestamp": 5.0, "expected_keywords": [], "type": "negative"}
+{"id": "mov-12", "question": "Is there a person walking on the sidewalk?", "video": "moving", "timestamp": 5.0, "expected_keywords": [], "type": "negative"}
+{"id": "mov-13", "question": "Is there a bicycle in the traffic?", "video": "moving", "timestamp": 5.0, "expected_keywords": [], "type": "negative"}
+{"id": "mov-14", "question": "Is there a football match in the video?", "video": "moving", "timestamp": 5.0, "expected_keywords": [], "type": "negative"}
+{"id": "mov-15", "question": "What number is on the bus on the left?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["38", "bus"], "type": "positive"}
+{"id": "mov-16", "question": "Is the street busy with vehicles?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "truck", "car"], "type": "positive"}
+{"id": "mov-17", "question": "Describe the traffic scene", "video": "moving", "timestamp": 5.0, "expected_keywords": ["bus", "truck"], "type": "positive"}
+{"id": "mov-18", "question": "Is there a red car in the video?", "video": "moving", "timestamp": 5.0, "expected_keywords": ["car"], "type": "positive"}
+{"id": "adv-01", "question": "Does this video have two different scenes?", "video": "advanced", "timestamp": 3.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "adv-02", "question": "Is there a bus at the start of the video?", "video": "advanced", "timestamp": 3.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "adv-03", "question": "Are there men in suits later in the video?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person", "suit"], "type": "positive"}
+{"id": "adv-04", "question": "Is someone shouting and pointing?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person"], "type": "positive"}
+{"id": "adv-05", "question": "What happens in the second scene?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person", "suit"], "type": "positive"}
+{"id": "adv-06", "question": "Are there people at a football stadium?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person"], "type": "positive"}
+{"id": "adv-07", "question": "How many men are in suits?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["two", "person"], "type": "positive"}
+{"id": "adv-08", "question": "Is there a bus in the first scene?", "video": "advanced", "timestamp": 3.0, "expected_keywords": ["bus"], "type": "positive"}
+{"id": "adv-09", "question": "Show me the men in suits", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person", "suit"], "type": "positive"}
+{"id": "adv-10", "question": "Is there a truck in this video?", "video": "advanced", "timestamp": 3.0, "expected_keywords": [], "type": "negative"}
+{"id": "adv-11", "question": "Is there a dog in this video?", "video": "advanced", "timestamp": 3.0, "expected_keywords": [], "type": "negative"}
+{"id": "adv-12", "question": "Is there a football being kicked?", "video": "advanced", "timestamp": 11.0, "expected_keywords": [], "type": "negative"}
+{"id": "adv-13", "question": "What is the man in the suit doing?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person"], "type": "positive"}
+{"id": "adv-14", "question": "Describe the second scene of the video", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["person", "suit"], "type": "positive"}
+{"id": "adv-15", "question": "Are there people walking near a bus?", "video": "advanced", "timestamp": 3.0, "expected_keywords": ["bus", "person"], "type": "positive"}
+{"id": "adv-16", "question": "Is the bus blue?", "video": "advanced", "timestamp": 3.0, "expected_keywords": ["blue", "bus"], "type": "positive"}
+{"id": "adv-17", "question": "Which video has two scenes, a bus and men in suits?", "video": "advanced", "timestamp": 11.0, "expected_keywords": ["bus", "person"], "type": "positive"}
+{"id": "adv-18", "question": "Is there a cat in this video?", "video": "advanced", "timestamp": 3.0, "expected_keywords": [], "type": "negative"}

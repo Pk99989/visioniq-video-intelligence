@@ -112,9 +112,14 @@ def process_video(video_id: int) -> None:
             for i, row in frame_rows:
                 if i in s["frame_indices"]:
                     row.embedding_json = json.dumps(vec)
+                    # Payload carries owner_id (the Qdrant read filter),
+                    # the caption provider, and detection labels so the
+                    # read path can filter without touching the DB.
                     retrieval.try_qdrant_upsert(row.id, vec, {
-                        "video_id": video.id, "timestamp_seconds": row.timestamp_seconds,
-                        "caption": caption_text})
+                        "video_id": video.id, "owner_id": video.owner_id,
+                        "timestamp_seconds": row.timestamp_seconds,
+                        "caption": caption_text, "provider": provider,
+                        "detections": sorted(set(det_labels))})
             db.commit()
 
         video.status = "ready"

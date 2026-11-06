@@ -81,6 +81,11 @@ class Settings:
     VLM_HEALTH_TIMEOUT_SECONDS: int = _env_int("VLM_HEALTH_TIMEOUT_SECONDS", 10)
     QDRANT_URL: str = _env("QDRANT_URL", "")
     QDRANT_COLLECTION: str = _env("QDRANT_COLLECTION", "visioniq_frames")
+    # Phase 4: cross-encoder reranker for search (fastembed
+    # TextCrossEncoder). Empty = off (hybrid score only). Example:
+    # "Xenova/ms-marco-MiniLM-L-6-v2" (~80 MB download on first use).
+    # When the model cannot load, search keeps the hybrid order.
+    RERANKER_MODEL: str = _env("RERANKER_MODEL", "")
     SYNC_PROCESSING: bool = _env("SYNC_PROCESSING", "0") == "1"
     WORKER_CONCURRENCY: int = _env_int("WORKER_CONCURRENCY", 1)
     # Phase 2: embeddings: hash | fastembed | sentence_transformers

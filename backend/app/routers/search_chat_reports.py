@@ -24,7 +24,10 @@ def search(body: SearchIn, user: User = Depends(get_current_user), db: Session =
             raise HTTPException(404, "Video not found")
     return search_frames(db, body.query, video_id=body.video_id,
                          top_k=body.top_k, min_score=body.min_score,
-                         user_id=user.id if user.role != "admin" else None)
+                         user_id=user.id if user.role != "admin" else None,
+                         label=body.label, provider=body.provider,
+                         start_seconds=body.start_seconds,
+                         end_seconds=body.end_seconds, rerank=body.rerank)
 
 
 @router.get("/agent/tools")

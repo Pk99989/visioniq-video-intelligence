@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Event, Video
-from .retrieval import search_frames
+from .retrieval import search_frames, validate_citations
 from .summarization import summarize_video
 
 
@@ -74,6 +74,7 @@ def answer_question(db: Session, question: str, video_id=None, user_id=None) -> 
                 "tool": "events", "confidence": "high"}
     if "clip" in q:
         hits = search_frames(db, question, video_id=video_id, top_k=5, user_id=user_id)
+        hits = validate_citations(db, hits)
         clips = [{"video_id": h["video_id"], "start_seconds": max(0.0, h["timestamp_seconds"] - 2),
                   "end_seconds": h["timestamp_seconds"] + 2, "caption": h["caption"]} for h in hits]
         return {"answer": f"Found {len(clips)} clip(s) matching the query.",
@@ -82,6 +83,8 @@ def answer_question(db: Session, question: str, video_id=None, user_id=None) -> 
     # embeddings score unrelated text around 0.30, so <0.45 means "no
     # evidence" rather than a confident-sounding guess.
     hits = search_frames(db, question, video_id=video_id, top_k=5, min_score=0.45, user_id=user_id)
+    # Phase 4: never cite a frame that does not exist in the DB.
+    hits = validate_citations(db, hits)
     if not hits:
         return {"answer": "No video evidence was retrieved for this question, so I cannot answer "
                 "it from the video library. Try a different query or process more video.",

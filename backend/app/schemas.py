@@ -56,6 +56,12 @@ class SearchIn(BaseModel):
     video_id: Optional[int] = None
     top_k: int = Field(default=10, ge=1, le=50)
     min_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    # Phase 4 filters (all optional, all owner-scoped server-side):
+    label: Optional[str] = None          # only frames detecting this label
+    provider: Optional[str] = None       # only captions from this provider
+    start_seconds: Optional[float] = None
+    end_seconds: Optional[float] = None
+    rerank: Optional[bool] = None        # None = follow RERANKER_MODEL
 
 
 class SearchHit(BaseModel):
@@ -66,6 +72,7 @@ class SearchHit(BaseModel):
     caption: str
     frame_path: Optional[str] = None
     detections: List[str] = []
+    provider: Optional[str] = None
 
 
 class ChatIn(BaseModel):
