@@ -35,6 +35,55 @@ def agent_tools(user: User = Depends(get_current_user)):
     return agent.TOOLS
 
 
+@router.get("/stats")
+def stats(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Dashboard analytics (Phase 8): owner-scoped totals. Admins see
+    the whole system; everyone else sees only their own videos. All
+    counts come from the DB — no video files are opened."""
+    from sqlalchemy import func
+
+    from ..models import Detection, Event, ProcessingJob
+
+    scope = None if user.role == "admin" else user.id
+    vq = db.query(Video)
+    if scope is not None:
+        vq = vq.filter_by(owner_id=scope)
+    videos = vq.all()
+    vids = [v.id for v in videos]
+    dq = db.query(Detection)
+    eq = db.query(Event)
+    if vids:
+        dq = dq.filter(Detection.video_id.in_(vids))
+        eq = eq.filter(Event.video_id.in_(vids))
+    else:
+        dq = dq.filter(False)
+        eq = eq.filter(False)
+    by_label = (dq.with_entities(Detection.label, func.count())
+                .group_by(Detection.label).order_by(func.count().desc())
+                .limit(10).all())
+    durations = []
+    for job in db.query(ProcessingJob).filter_by(status="done").all():
+        if vids and job.video_id not in vids:
+            continue
+        if job.updated_at and job.created_at:
+            durations.append((job.updated_at - job.created_at).total_seconds())
+    return {
+        "videos_total": len(videos),
+        "videos_ready": sum(1 for v in videos if v.status == "ready"),
+        "videos_processing": sum(1 for v in videos if v.status in ("processing", "uploaded")),
+        "videos_failed": sum(1 for v in videos if v.status == "failed"),
+        "total_duration_seconds": round(sum(v.duration_seconds or 0 for v in videos), 1),
+        "total_storage_bytes": sum(v.file_size_bytes or 0 for v in videos),
+        "detections_total": dq.count(),
+        "detections_by_label": [{"label": label, "count": n} for label, n in by_label],
+        "events_total": eq.count(),
+        "events_verified": eq.filter_by(verified=True).count(),
+        "avg_processing_seconds": (round(sum(durations) / len(durations), 1)
+                                   if durations else None),
+        "jobs_timed": len(durations),
+    }
+
+
 @router.post("/chat")
 def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if body.video_id:
@@ -52,8 +101,17 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         db.add(conv)
         db.flush()
     db.add(Message(conversation_id=conv.id, role="user", content=body.question))
+    # M12: prior turns are passed to the agent so follow-ups ("what
+    # colour was it?") are answered in context, not as standalone
+    # questions. The just-added user message is prior[0] (newest
+    # first), so prior[1:] is the previous turns, oldest first.
+    prior = (db.query(Message).filter_by(conversation_id=conv.id)
+             .order_by(Message.id.desc()).limit(7).all())
+    history = [{"role": m.role, "content": m.content}
+               for m in reversed(prior[1:])]
     result = agent.answer_question(db, body.question, video_id=body.video_id,
-                                   user_id=user.id if user.role != "admin" else None)
+                                   user_id=user.id if user.role != "admin" else None,
+                                   history=history)
     import json
 
     db.add(Message(conversation_id=conv.id, role="assistant", content=result["answer"],

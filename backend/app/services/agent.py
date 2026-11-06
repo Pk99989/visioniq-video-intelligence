@@ -30,13 +30,25 @@ from .retrieval import search_frames, validate_citations
 from .summarization import summarize_video
 
 
-def _llm_synthesize(question: str, evidence: list[dict]) -> str | None:
+def _llm_synthesize(question: str, evidence: list[dict],
+                    history: list[dict] | None = None) -> str | None:
+    """Phase 8 (M12): `history` is the prior turns of this
+    conversation (role/content, oldest first). It goes into the
+    prompt so follow-ups ("what colour was it?") resolve against
+    what was already said — the evidence rule is unchanged: the
+    answer must still come from the retrieved captions, and the
+    model is told to say so when they do not answer it."""
     if settings.VLM_PROVIDER not in ("openai_compatible", "nvidia_nim") or not settings.VLM_BASE_URL:
         return None
     context = "\n".join(f"[{h['timestamp_seconds']:.1f}s] {h['caption']}" for h in evidence)
     prompt = ("Answer ONLY from the evidence below. Cite timestamps like [12.0s]. "
               "If the evidence does not answer the question, say so.\n\n"
-              f"Evidence:\n{context}\n\nQuestion: {question}")
+              f"Evidence:\n{context}\n\n")
+    if history:
+        turns = "\n".join(f"{h['role']}: {h['content']}" for h in history)
+        prompt += (f"Previous conversation (for context only — the answer "
+                   f"must still come from the evidence above):\n{turns}\n\n")
+    prompt += f"Question: {question}"
     try:
         headers = {"Content-Type": "application/json"}
         if settings.VLM_API_KEY:
@@ -271,13 +283,17 @@ def _plan(question: str) -> list[str]:
     return [t for t in _TOOL_ORDER if t in wanted][:3]
 
 
-def answer_question(db: Session, question: str, video_id=None, user_id=None) -> dict:
+def answer_question(db: Session, question: str, video_id=None, user_id=None,
+                    history: list[dict] | None = None) -> dict:
     """Evidence-grounded Q&A. user_id scopes retrieval to that user's own
     videos (None = no scoping, used only by local stdio MCP use); the
-    chat endpoint passes the logged-in user, admins pass None."""
+    chat endpoint passes the logged-in user, admins pass None.
+    `history` (Phase 8 / M12) is the conversation's prior turns, used
+    only by the LLM synthesis step — retrieval itself stays evidence
+    based, never on memory alone."""
     plan = _plan(question)
     if len(plan) == 1 and plan[0] == "video_qa":
-        return _answer_qa(db, question, video_id, user_id)
+        return _answer_qa(db, question, video_id, user_id, history)
     if len(plan) == 1:
         return _answer_single(db, plan[0], question, video_id, user_id)
     # Multi-step: run each tool, combine the sections, merge and
@@ -373,21 +389,32 @@ def _answer_single(db: Session, tool: str, question: str, video_id, user_id) -> 
     return _answer_qa(db, question, video_id, user_id)
 
 
-def _answer_qa(db: Session, question: str, video_id, user_id) -> dict:
+def _answer_qa(db: Session, question: str, video_id, user_id,
+               history: list[dict] | None = None) -> dict:
     # Agent Q&A uses a stricter floor than the raw search API: hash
     # embeddings score unrelated text around 0.30, so <0.45 means "no
     # evidence" rather than a confident-sounding guess. (Phase 4
     # finding: this floor is tuned for hash embeddings; with
     # FastEmbed it admits false evidence — per-provider calibration
     # is an open follow-up, not tuned to the eval set.)
-    hits = search_frames(db, question, video_id=video_id, top_k=5, min_score=0.45, user_id=user_id)
+    # Phase 8 (M12): a follow-up like "what colour is it?" carries
+    # almost no retrieval signal on its own. When the conversation
+    # has a previous user question, search with that question prepended
+    # so the follow-up retrieves the same evidence its antecedent did.
+    # The evidence floor and the "no evidence" answer are unchanged.
+    query = question
+    if history:
+        prev_user = [h["content"] for h in history if h["role"] == "user"]
+        if prev_user:
+            query = prev_user[-1] + " " + question
+    hits = search_frames(db, query, video_id=video_id, top_k=5, min_score=0.45, user_id=user_id)
     # Phase 4: never cite a frame that does not exist in the DB.
     hits = validate_citations(db, hits)
     if not hits:
         return {"answer": "No video evidence was retrieved for this question, so I cannot answer "
                 "it from the video library. Try a different query or process more video.",
                 "citations": [], "tool": "search_qa", "confidence": "low"}
-    llm = _llm_synthesize(question, hits)
+    llm = _llm_synthesize(question, hits, history)
     if llm:
         answer = llm
     else:

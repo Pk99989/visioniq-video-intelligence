@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## v0.10.0 — 2026-11-06 (Phase 8 frontend upgrades)
+
+- **Backend pagination (L10):** `limit`/`offset` (with `X-Total-Count`) on `GET /api/v1/videos`, detections, frames, events, alerts — list shape unchanged. New owner-scoped `GET /api/v1/stats` (video counts, detections by label, duration, storage, events, avg processing time).
+- **Chat history (M12):** conversations sidebar + thread view + follow-ups with `conversation_id` in the UI; the chat endpoint passes the last 6 prior turns to the agent, which uses them in the LLM synthesis prompt and expands follow-up questions with the previous user question for retrieval (evidence floor unchanged). New `tests/test_phase8_backend.py` (6 tests: pagination, stats + cross-user isolation, SSE stream, conversation persistence, LLM prompt receives history).
+- **SSE status stream:** `GET /api/v1/videos/{id}/status-stream` (signed stream token, JWT in query, or Bearer) emits status every 2 s and closes on ready/failed; the video page uses it with the 3 s polling fallback; the processing page stops polling once nothing is processing.
+- **Search filters:** label, provider, time window, and top_k (10/20/50) surfaced in the UI (Phase 4 API filters).
+- **Video page:** event timeline strip (clickable markers), trajectory toggle (annotated frames via `FrameImage` `annotated` prop), clip download with start/end inputs.
+- **Robustness:** loading skeletons + `ErrorBoundary` (layout-wide), `FrameImage` blob-URL leak fixed (L7 — URL tracked in a ref and revoked on change/unmount), library/events pagination, dashboard stats cards.
+- **Frontend tests:** Vitest 3 + Testing Library (10 tests: `lib/api.ts` error stringification/auth header/pagination helper, `components/ui.tsx` skeletons/error boundary). Playwright e2e extended: search filters, chat history reopen, dashboard stats, video clip download, 360 px no-overflow check — full flow passes live.
+- Full suite: **81 backend tests pass** (3 integration skipped — this VM was replaced and Postgres/Redis are not installed here; CI runs them), **10 Vitest pass**, **1 e2e pass**, frontend build green.
+
 ## v0.9.0 — 2026-11-06 (Phase 7 DB/infra hardening)
 
 - **Alembic-only schema (H2):** the app no longer calls `create_all` anywhere on its path — `run_migrations()` (alembic upgrade head) runs at import and at startup, and `backend/entrypoint.sh` runs migrations before the server in Docker (verified end-to-end on a scratch DB). Migration v4 adds composite indexes `captions/detections/frames(video_id, timestamp_seconds)` + `processing_jobs.celery_task_id`.

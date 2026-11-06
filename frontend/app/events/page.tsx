@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
-import { api } from "@/lib/api";
-import { Button, Card, ErrorBox, Input } from "@/components/ui";
+import { api, apiPage, VideoEvent } from "@/lib/api";
+import { Button, Card, Empty, ErrorBox, Input } from "@/components/ui";
+
+const PAGE_SIZE = 20;
 
 export default function Events() {
   const [videoId, setVideoId] = useState("");
@@ -9,20 +11,27 @@ export default function Events() {
   const [ruleType, setRuleType] = useState("scene_duration_gt");
   const [value, setValue] = useState("5");
   const [severity, setSeverity] = useState("warning");
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<VideoEvent[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
+
+  async function list(off = 0) {
+    try {
+      const p = await apiPage<VideoEvent>(`/api/v1/videos/${videoId}/events?limit=${PAGE_SIZE}&offset=${off}`);
+      setEvents(p.items);
+      setTotal(p.total);
+      setOffset(off);
+    } catch (e: any) { setError(String(e.message)); }
+  }
 
   async function evaluate() {
     try {
       await api(`/api/v1/videos/${videoId}/events/evaluate`, {
         method: "POST", body: JSON.stringify([{ name, rule_type: ruleType, value, severity }]),
       });
-      setEvents(await api(`/api/v1/videos/${videoId}/events`));
+      list(0);
     } catch (e: any) { setError(String(e.message)); }
-  }
-  async function list() {
-    try { setEvents(await api(`/api/v1/videos/${videoId}/events`)); }
-    catch (e: any) { setError(String(e.message)); }
   }
 
   return (
@@ -42,12 +51,19 @@ export default function Events() {
           <option value="info">info</option><option value="warning">warning</option><option value="critical">critical</option>
         </select>
         <Button onClick={evaluate}>Evaluate rules</Button>
-        <Button onClick={list}>List events</Button>
+        <Button onClick={() => list(0)}>List events</Button>
       </Card>
       {error && <ErrorBox error={error} />}
-      {events.map((e) => (
+      {events.length === 0 ? <Empty text="No events yet — run Evaluate rules, or list events for a video." /> : events.map((e) => (
         <Card key={e.id}><p className="text-sm"><b>{e.timestamp_seconds.toFixed(1)}s</b> — {e.title} [{e.severity}] verified={String(e.verified)}</p><p className="text-xs text-gray-500">{e.description}</p></Card>
       ))}
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <Button disabled={offset === 0} onClick={() => list(Math.max(0, offset - PAGE_SIZE))}>← Previous</Button>
+          <span>Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}</span>
+          <Button disabled={offset + PAGE_SIZE >= total} onClick={() => list(offset + PAGE_SIZE)}>Next →</Button>
+        </div>
+      )}
     </div>
   );
 }

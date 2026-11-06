@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
 import SignOut from "@/components/SignOut";
+import { ErrorBoundary } from "@/components/ui";
 import "./globals.css";
 
 const NAV = [
@@ -31,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 py-6"><ErrorBoundary>{children}</ErrorBoundary></main>
       </body>
     </html>
   );

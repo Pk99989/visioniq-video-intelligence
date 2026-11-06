@@ -43,6 +43,45 @@ export type SearchHit = {
   score: number; caption: string; frame_path: string | null; detections: string[];
 };
 
+export type Stats = {
+  videos_total: number; videos_ready: number; videos_processing: number; videos_failed: number;
+  total_duration_seconds: number; total_storage_bytes: number;
+  detections_total: number; detections_by_label: { label: string; count: number }[];
+  events_total: number; events_verified: number;
+  avg_processing_seconds: number | null; jobs_timed: number;
+};
+
+export type Conversation = { id: number; title: string; video_id: number | null };
+export type ChatMessage = { role: string; content: string };
+
+export type VideoEvent = {
+  id: number; rule_name: string; title: string; severity: string;
+  timestamp_seconds: number; verified: boolean; description: string;
+  zone_name: string | null; track_id: number | null; label: string | null;
+  evidence_frame_id: number | null; evidence_clip_url: string | null;
+};
+
+/** Paginated list (Phase 8 / L10): the backend keeps the list shape
+ *  and puts the total in the X-Total-Count header. */
+export async function apiPage<T>(path: string): Promise<{ items: T[]; total: number }> {
+  const token = getToken();
+  const res = await fetch(`${API}${path}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const j = await res.json();
+      detail = Array.isArray(j.detail) ? JSON.stringify(j.detail) : (j.detail || JSON.stringify(j));
+    } catch { /* keep statusText */ }
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  const items = (await res.json()) as T[];
+  const raw = res.headers.get("x-total-count");
+  const total = raw === null ? items.length : parseInt(raw, 10);
+  return { items, total: Number.isNaN(total) ? items.length : total };
+}
+
 export function frameImageUrl(videoId: number, frameId: number): string {
   // Images are served through the authenticated API, so the frontend
   // fetches them with the token and creates an object URL (see

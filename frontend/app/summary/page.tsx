@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, Video } from "@/lib/api";
+import { api, apiPage, Video } from "@/lib/api";
 import { Button, Card, ErrorBox, Input } from "@/components/ui";
 
 export default function Summary() {
@@ -9,7 +9,7 @@ export default function Summary() {
   const [length, setLength] = useState("medium");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
-  useEffect(() => { api<Video[]>("/api/v1/videos").then(setVideos).catch((e) => setError(String(e.message))); }, []);
+  useEffect(() => { apiPage<Video>("/api/v1/videos?limit=100").then((p) => setVideos(p.items)).catch((e) => setError(String(e.message))); }, []);
   async function run() {
     try { setResult(await api(`/api/v1/videos/${videoId}/summary?length=${length}`)); }
     catch (e: any) { setError(String(e.message)); }

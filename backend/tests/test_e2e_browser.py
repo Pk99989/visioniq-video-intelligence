@@ -102,10 +102,56 @@ def test_full_flow_register_upload_search_clip_logout(page):
     page.get_by_text(re.compile(r"Score \d+\.\d+")).first.wait_for(timeout=15000)
     assert "bus" in page.content().lower()
 
+    # Phase 8: search filters — label "bus" still finds it; download
+    # a clip from a filtered hit; a label that is not in the video
+    # finds nothing.
+    page.get_by_placeholder("Label (e.g. bus)").fill("bus")
+    page.get_by_role("button", name="Search").click()
+    page.get_by_text(re.compile(r"Score \d+\.\d+")).first.wait_for(timeout=15000)
     with page.expect_download() as dl_info:
         page.get_by_role("button", name="Download clip (±2s)").first.click()
     download = dl_info.value
     assert download.suggested_filename.endswith(".mp4")
+    page.get_by_placeholder("Label (e.g. bus)").fill("airplane")
+    page.get_by_role("button", name="Search").click()
+    page.get_by_text("No matches.").wait_for(timeout=15000)
+
+    # Phase 8: chat history — ask, follow up in the same conversation,
+    # reload and reopen it from the sidebar.
+    page.goto(f"{APP_URL}/chat")
+    page.get_by_placeholder("Ask about your videos… (try: summarise, events, or a clip question)").fill("Is there a bus?")
+    page.get_by_role("button", name="Ask").click()
+    page.get_by_text("Is there a bus?").wait_for(timeout=15000)
+    page.wait_for_function(
+        "() => document.body.innerText.toLowerCase().includes('bus')",
+        timeout=30000)
+    page.get_by_placeholder("Ask about your videos… (try: summarise, events, or a clip question)").fill("What colour is it?")
+    page.get_by_role("button", name="Ask").click()
+    page.get_by_text("What colour is it?").first.wait_for(timeout=15000)
+    page.wait_for_timeout(5000)
+    page.goto(f"{APP_URL}/chat")
+    page.get_by_text("Is there a bus?").first.wait_for(timeout=15000)
+    page.get_by_role("button", name="Is there a bus?").click()
+    page.get_by_text("What colour is it?").first.wait_for(timeout=15000)
+
+    # Phase 8: dashboard stats + video-page clip download.
+    page.goto(APP_URL)
+    page.get_by_text("Detections").wait_for(timeout=15000)
+    assert "bus" in page.content().lower()
+    page.goto(f"{APP_URL}/video/{video_id}")
+    page.get_by_text("Clip download").wait_for(timeout=15000)
+    page.get_by_placeholder("Start (seconds)").fill("0")
+    page.get_by_placeholder("End (seconds)").fill("2")
+    with page.expect_download() as dl2:
+        page.get_by_role("button", name="Download clip").click()
+    assert dl2.value.suggested_filename.endswith(".mp4")
+
+    # Phase 8: 360 px wide — no horizontal overflow on the dashboard.
+    page.set_viewport_size({"width": 360, "height": 800})
+    page.goto(APP_URL)
+    page.get_by_role("heading", name="Dashboard").wait_for(timeout=15000)
+    overflow = page.evaluate("document.scrollingElement.scrollWidth - document.documentElement.clientWidth")
+    assert overflow <= 1, f"horizontal overflow at 360px: {overflow}px"
 
     page.get_by_role("button", name="Sign out").click()
     page.wait_for_url(f"{APP_URL}/login", timeout=15000)

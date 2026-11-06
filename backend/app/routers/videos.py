@@ -3,7 +3,7 @@ import shutil
 from collections import Counter
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -61,11 +61,18 @@ def upload_video(background: BackgroundTasks, title: str = Form(...), file: Uplo
 
 
 @router.get("", response_model=list[VideoOut])
-def list_videos(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_videos(response: Response, user: User = Depends(get_current_user),
+                db: Session = Depends(get_db),
+                limit: int = Query(50, ge=1, le=100),
+                offset: int = Query(0, ge=0)):
+    """Paginated (Phase 8 / L10): the list shape is unchanged, the
+    total goes in X-Total-Count so the frontend can page without a
+    second request."""
     q = db.query(Video)
     if user.role != "admin":
         q = q.filter_by(owner_id=user.id)
-    return q.order_by(Video.id.desc()).all()
+    response.headers["X-Total-Count"] = str(q.count())
+    return q.order_by(Video.id.desc()).offset(offset).limit(limit).all()
 
 
 @router.get("/{video_id}", response_model=VideoOut)
@@ -196,9 +203,14 @@ def download_clip(video_id: int, start: float = Query(..., ge=0),
 
 
 @router.get("/{video_id}/detections")
-def get_detections(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_detections(video_id: int, response: Response, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db),
+                   limit: int = Query(100, ge=1, le=500),
+                   offset: int = Query(0, ge=0)):
     _get_video(db, video_id, user)
-    dets = db.query(Detection).filter_by(video_id=video_id).order_by(Detection.timestamp_seconds).all()
+    q = db.query(Detection).filter_by(video_id=video_id).order_by(Detection.timestamp_seconds)
+    response.headers["X-Total-Count"] = str(q.count())
+    dets = q.offset(offset).limit(limit).all()
     return [{"id": d.id, "frame_id": d.frame_id, "track_id": d.track_id, "label": d.label,
              "confidence": round(d.confidence, 3), "timestamp_seconds": d.timestamp_seconds,
              "x1": round(d.x1, 1), "y1": round(d.y1, 1), "x2": round(d.x2, 1), "y2": round(d.y2, 1)}
@@ -244,9 +256,14 @@ def get_scenes(video_id: int, user: User = Depends(get_current_user), db: Sessio
 
 
 @router.get("/{video_id}/frames")
-def get_frames(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_frames(video_id: int, response: Response, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db),
+               limit: int = Query(100, ge=1, le=500),
+               offset: int = Query(0, ge=0)):
     _get_video(db, video_id, user)
-    frames = db.query(Frame).filter_by(video_id=video_id).order_by(Frame.timestamp_seconds).all()
+    q = db.query(Frame).filter_by(video_id=video_id).order_by(Frame.timestamp_seconds)
+    response.headers["X-Total-Count"] = str(q.count())
+    frames = q.offset(offset).limit(limit).all()
     return [{"id": f.id, "timestamp_seconds": f.timestamp_seconds, "scene_id": f.scene_id,
              "image_url": f"/api/v1/videos/{video_id}/frames/{f.id}/image"} for f in frames]
 
@@ -296,9 +313,14 @@ def evaluate_events(video_id: int, rules: list[EventRuleIn],
 
 
 @router.get("/{video_id}/events")
-def get_events(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_events(video_id: int, response: Response, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db),
+               limit: int = Query(50, ge=1, le=200),
+               offset: int = Query(0, ge=0)):
     _get_video(db, video_id, user)
-    evs = db.query(Event).filter_by(video_id=video_id).order_by(Event.timestamp_seconds).all()
+    q = db.query(Event).filter_by(video_id=video_id).order_by(Event.timestamp_seconds)
+    response.headers["X-Total-Count"] = str(q.count())
+    evs = q.offset(offset).limit(limit).all()
     return [_event_out(e) for e in evs]
 
 
@@ -377,11 +399,75 @@ def verify_event_endpoint(video_id: int, event_id: int,
 
 
 @router.get("/{video_id}/alerts")
-def get_alerts(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_alerts(video_id: int, response: Response, user: User = Depends(get_current_user),
+               db: Session = Depends(get_db),
+               limit: int = Query(50, ge=1, le=200),
+               offset: int = Query(0, ge=0)):
     _get_video(db, video_id, user)
-    alerts = db.query(Alert).filter_by(video_id=video_id).order_by(Alert.id.desc()).all()
+    q = db.query(Alert).filter_by(video_id=video_id).order_by(Alert.id.desc())
+    response.headers["X-Total-Count"] = str(q.count())
+    alerts = q.offset(offset).limit(limit).all()
     return [{"id": a.id, "event_id": a.event_id, "severity": a.severity, "message": a.message,
              "acknowledged": a.acknowledged} for a in alerts]
+
+
+def _auth_for_sse(request: Request, video_id: int, db: Session) -> User:
+    """SSE auth: EventSource cannot send an Authorization header, so
+    the token travels in ?token= — either the signed stream token
+    (same as the <video> tag) or a plain JWT. Bearer header also
+    works (API clients, tests)."""
+    token = request.query_params.get("token")
+    if token:
+        verified = verify_stream_token(token)
+        if verified and verified[1] == video_id:
+            user = db.get(User, verified[0])
+            if user:
+                return user
+        from ..security import decode_token, is_revoked
+
+        data = decode_token(token)
+        if data and not is_revoked(db, data.get("jti")):
+            user = db.get(User, int(data["sub"]))
+            if user:
+                return user
+        raise HTTPException(401, "Invalid or expired token")
+    return _bearer_user(request, db)
+
+
+@router.get("/{video_id}/status-stream")
+def video_status_stream(video_id: int, request: Request, db: Session = Depends(get_db)):
+    """Server-sent events for processing status (Phase 8). Emits
+    `data: {"status": ..., "error_message": ...}` every 2 s and
+    closes with a final event once the video is ready/failed (or
+    after 10 min). The frontend falls back to polling if EventSource
+    fails."""
+    from fastapi.responses import StreamingResponse
+
+    import json as _json
+    import time as _time
+
+    user = _auth_for_sse(request, video_id, db)
+    _get_video(db, video_id, user)
+
+    def _gen():
+        deadline = _time.time() + 600
+        while _time.time() < deadline:
+            s = SessionLocal()
+            try:
+                v = s.get(Video, video_id)
+                status = v.status if v else "missing"
+                err = v.error_message if v else None
+            finally:
+                s.close()
+            payload = _json.dumps({"status": status, "error_message": err})
+            yield f"data: {payload}\n\n"
+            if status in ("ready", "failed", "missing"):
+                break
+            _time.sleep(2)
+
+    return StreamingResponse(_gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @router.post("/{video_id}/alerts/{alert_id}/acknowledge")
