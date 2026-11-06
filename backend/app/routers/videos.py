@@ -205,6 +205,22 @@ def get_detections(video_id: int, user: User = Depends(get_current_user), db: Se
             for d in dets]
 
 
+@router.get("/{video_id}/trajectories")
+def get_trajectories(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Object trajectories (Phase 3): one entry per track id — label,
+    first/last seen, dwell time (last − first), frames seen, total
+    displacement, and the centre-point path. Built from stored
+    detections, so it works for any already-processed video. Owner-
+    scoped like every other video route."""
+    from ..services.detection import build_trajectories
+
+    _get_video(db, video_id, user)
+    dets = db.query(Detection).filter_by(video_id=video_id).order_by(Detection.timestamp_seconds).all()
+    rows = [{"track_id": d.track_id, "label": d.label, "timestamp_seconds": d.timestamp_seconds,
+             "x1": d.x1, "y1": d.y1, "x2": d.x2, "y2": d.y2} for d in dets]
+    return build_trajectories(rows)
+
+
 @router.get("/{video_id}/analytics")
 def get_analytics(video_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     video = _get_video(db, video_id, user)

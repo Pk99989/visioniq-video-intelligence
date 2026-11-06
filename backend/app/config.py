@@ -90,6 +90,41 @@ class Settings:
     # laptop: it runs on onnxruntime without torch. The .pt file is used
     # only when ultralytics is installed.
     YOLO_MODEL_PATH: str = _env("YOLO_MODEL_PATH", "")
+    # Phase 3: detection calibration. YOLO_CONF is the default minimum
+    # confidence; YOLO_CLASS_CONF overrides it per class
+    # ("person:0.5,bus:0.3"). YOLO_CLASSES is an allow-list
+    # ("bus,truck,person") — empty means all COCO classes. YOLO_NMS is
+    # the duplicate-suppression IoU threshold. YOLO_MIN_TRACK_IOU is
+    # the minimum IoU to keep a track id across frames.
+    # YOLO_TRACK_MAX_MISSED is how many consecutive frames a track may
+    # go unseen before it retires; YOLO_TRACK_MAX_AGE_SECONDS caps a
+    # track's lifetime. YOLO_EXECUTION_PROVIDERS is tried in order
+    # ("CUDA,CPU" — CUDA is attempted first, CPU is the fallback).
+    YOLO_CONF: float = _env_float("YOLO_CONF", 0.35)
+    YOLO_NMS: float = _env_float("YOLO_NMS", 0.45)
+    YOLO_CLASSES: str = _env("YOLO_CLASSES", "")
+    YOLO_CLASS_CONF: str = _env("YOLO_CLASS_CONF", "")
+    YOLO_MIN_TRACK_IOU: float = _env_float("YOLO_MIN_TRACK_IOU", 0.3)
+    YOLO_TRACK_MAX_MISSED: int = _env_int("YOLO_TRACK_MAX_MISSED", 5)
+    YOLO_TRACK_MAX_AGE_SECONDS: float = _env_float("YOLO_TRACK_MAX_AGE_SECONDS", 120.0)
+    YOLO_EXECUTION_PROVIDERS: str = _env("YOLO_EXECUTION_PROVIDERS", "CUDA,CPU")
+
+    def yolo_class_conf(self) -> dict:
+        """Per-class confidence overrides, e.g. {'person': 0.5}."""
+        out = {}
+        for item in self.YOLO_CLASS_CONF.split(","):
+            item = item.strip()
+            if ":" in item:
+                label, val = item.split(":", 1)
+                try:
+                    out[label.strip()] = float(val)
+                except ValueError:
+                    pass
+        return out
+
+    def yolo_classes(self) -> set:
+        """Allow-listed labels, empty set = all classes."""
+        return {c.strip() for c in self.YOLO_CLASSES.split(",") if c.strip()}
     # Phase 2: worker mode: in_process | celery. Celery needs Redis.
     WORKER_MODE: str = _env("WORKER_MODE", "in_process")
     CELERY_BROKER_URL: str = _env("CELERY_BROKER_URL", "redis://localhost:6379/0")

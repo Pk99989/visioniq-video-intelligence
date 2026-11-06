@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.5.0 — 2026-11-06 (Phase 3 computer vision)
+
+- **Detection calibration:** `YOLO_CONF`, `YOLO_NMS`, `YOLO_CLASSES` allow-list, per-class confidence overrides (`YOLO_CLASS_CONF="person:0.5,bus:0.3"`), `YOLO_MIN_TRACK_IOU`, `YOLO_TRACK_MAX_MISSED`, `YOLO_TRACK_MAX_AGE_SECONDS`, `YOLO_EXECUTION_PROVIDERS` (CUDA tried first, CPU fallback). All env-overridable, all reported by `/health` under `detection`.
+- **Per-video Tracker:** replaces the module-global greedy tracker — track ids are stable within a video and isolated between videos. Tracks retire after 5 missed frames or 120 s max age. 11 tests in `tests/test_detection.py` (lifecycle, expiry, NMS, class filter, per-class conf).
+- **Trajectories:** new `GET /videos/{id}/trajectories` (owner-scoped) — per track: label, first/last seen, dwell time, frames seen, displacement, centre-point path. Verified live on the moving-traffic video: 16 tracks, dwell up to 7.5 s; cross-user returns 404.
+- **Detection metrics (measured, hand-labelled GT, IoU>=0.5):** bus.jpg P 0.80 / R 0.80; traffic frame P 0.67 / R 0.50; track stability 0 id switches over 3 repeated frames; mean per-frame latency 219.8 ms warm on CPU. GPU latency still unmeasured (needs the RTX 3050). See `docs/benchmarks/2026-11-06-phase3.md`. No face/identity recognition anywhere.
+- Full suite: **38 tests pass** (plus 1 real-VLM e2e, run separately).
+
 ## v0.4.0 — 2026-11-06 (Phase 0 audit, Phase 1 real VLM, Phase 2 adaptive sampling, H1 security fix)
 
 - **Phase 0 audit:** `CODEBASE_AUDIT.md`, `TECHNICAL_DEBT.md`, `UPGRADE_PLAN.md` — read-only audit of v0.3.1 (11 backend tests + frontend build re-run). Found 6 High / 17 Medium / 14 Low debt items. Headline: password-reset token returned in API response (H1), search never uses Qdrant (H3), VLM was a client not an integration (H4), `create_all` vs Alembic conflict (H2).

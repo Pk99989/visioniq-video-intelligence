@@ -35,9 +35,149 @@ COCO_LABELS = [
 ]
 
 _onnx_session = None
+_onnx_provider = None
 _ultralytics_model = None
-_last_tracks: list[dict] = []
-_next_track_id = 1
+
+
+class Tracker:
+    """Per-video greedy IoU tracker (Phase 3).
+
+    One Tracker instance lives for one video — no module-global state,
+    so two videos processed in parallel cannot steal each other's
+    track ids (the old global tracker could). A track survives while
+    it is re-seen with IoU >= min_iou and the same label; it retires
+    when it goes unseen for more than max_missed consecutive frames,
+    or when its age exceeds max_age_seconds. Retired tracks are kept
+    in `finished` so trajectories (birth/death, dwell, path) can be
+    built after processing.
+    """
+
+    def __init__(self, min_iou=None, max_missed=None, max_age_seconds=None):
+        from ..config import settings
+
+        self.min_iou = settings.YOLO_MIN_TRACK_IOU if min_iou is None else min_iou
+        self.max_missed = settings.YOLO_TRACK_MAX_MISSED if max_missed is None else max_missed
+        self.max_age_seconds = (settings.YOLO_TRACK_MAX_AGE_SECONDS
+                                if max_age_seconds is None else max_age_seconds)
+        self._next_id = 1
+        self._active: dict[int, dict] = {}
+        self.finished: list[dict] = []
+
+    def update(self, detections: list[dict], timestamp: float | None = None) -> list[dict]:
+        ts = float(timestamp) if timestamp is not None else 0.0
+        used: set[int] = set()
+        for d in detections:
+            best, best_iou = None, self.min_iou
+            for tid, track in self._active.items():
+                if tid in used or track["label"] != d["label"]:
+                    continue
+                score = _iou(d, track["box"])
+                if score > best_iou:
+                    best, best_iou = tid, score
+            if best is not None:
+                d["track_id"] = best
+                used.add(best)
+                track = self._active[best]
+                track["box"] = d
+                track["missed"] = 0
+                track["last_seen"] = ts
+                track["positions"].append(_centre(d, ts))
+                # Max-age retirement applies even to a track seen this
+                # frame: a track must not live forever. The current
+                # detection starts a fresh track instead.
+                if timestamp is not None and ts - track["first_seen"] > self.max_age_seconds:
+                    track["reason"] = "aged"
+                    self.finished.append(track)
+                    del self._active[best]
+                    used.discard(best)
+                    d["track_id"] = self._next_id
+                    self._next_id += 1
+                    self._active[d["track_id"]] = {
+                        "track_id": d["track_id"], "label": d["label"],
+                        "box": d, "missed": 0, "first_seen": ts, "last_seen": ts,
+                        "positions": [_centre(d, ts)],
+                    }
+            else:
+                d["track_id"] = self._next_id
+                self._next_id += 1
+                self._active[d["track_id"]] = {
+                    "track_id": d["track_id"], "label": d["label"],
+                    "box": d, "missed": 0, "first_seen": ts, "last_seen": ts,
+                    "positions": [_centre(d, ts)],
+                }
+        # Age / miss expiry for tracks not seen this frame.
+        for tid in list(self._active):
+            if tid in used:
+                continue
+            track = self._active[tid]
+            track["missed"] += 1
+            age = ts - track["first_seen"] if timestamp is not None else 0.0
+            if track["missed"] > self.max_missed or (timestamp is not None
+                                                      and age > self.max_age_seconds):
+                track["reason"] = "missed" if track["missed"] > self.max_missed else "aged"
+                self.finished.append(track)
+                del self._active[tid]
+        return detections
+
+    def trajectories(self) -> list[dict]:
+        """All tracks (active + finished) as trajectory summaries."""
+        out = []
+        for track in list(self._active.values()) + self.finished:
+            out.append(_trajectory_summary(track))
+        return sorted(out, key=lambda t: t["first_seen_seconds"])
+
+
+def _centre(d: dict, ts: float) -> dict:
+    return {"t": ts, "x": (d["x1"] + d["x2"]) / 2, "y": (d["y1"] + d["y2"]) / 2,
+            "w": d["x2"] - d["x1"], "h": d["y2"] - d["y1"]}
+
+
+def _trajectory_summary(track: dict) -> dict:
+    positions = track["positions"]
+    first = positions[0]["t"]
+    last = positions[-1]["t"]
+    displacement = 0.0
+    for a, b in zip(positions, positions[1:]):
+        displacement += ((b["x"] - a["x"]) ** 2 + (b["y"] - a["y"]) ** 2) ** 0.5
+    return {
+        "track_id": track["track_id"], "label": track["label"],
+        "first_seen_seconds": first, "last_seen_seconds": last,
+        "dwell_seconds": round(last - first, 3),
+        "frames_seen": len(positions),
+        "displacement_px": round(displacement, 1),
+        "path": positions,
+    }
+
+
+def build_trajectories(detections: list[dict]) -> list[dict]:
+    """Build trajectory summaries from stored Detection rows (dicts with
+    track_id, label, timestamp_seconds, x1..y2). Same shape as
+    Tracker.trajectories(), so the API can serve it from the DB."""
+    by_track: dict[int, dict] = {}
+    for d in sorted(detections, key=lambda r: r["timestamp_seconds"]):
+        tid = d.get("track_id")
+        if tid is None:
+            continue
+        track = by_track.setdefault(tid, {
+            "track_id": tid, "label": d["label"], "box": d,
+            "first_seen": d["timestamp_seconds"], "last_seen": d["timestamp_seconds"],
+            "positions": []})
+        track["last_seen"] = d["timestamp_seconds"]
+        track["positions"].append(_centre(d, d["timestamp_seconds"]))
+    return sorted((_trajectory_summary(t) for t in by_track.values()),
+                  key=lambda t: t["first_seen_seconds"])
+
+
+# Backwards-compatible module default tracker (used when detect_frame
+# is called without one, e.g. in tests). Prefer passing a Tracker.
+_default_tracker = Tracker()
+
+
+def reset_tracker() -> None:
+    """Reset the module default tracker. Prefer a fresh Tracker() per
+    video; this exists for the old call sites and tests."""
+    global _default_tracker
+    _default_tracker = Tracker()
 
 
 def _candidate_paths() -> list[Path]:
@@ -60,35 +200,43 @@ def _find_weights(suffix: str) -> Path | None:
 
 
 def provider_status() -> dict:
+    """Detection capability + calibration, for /health. Includes the
+    configured thresholds and the ONNX execution provider that actually
+    loaded (CUDA when a GPU is present, CPU otherwise)."""
+    from ..config import settings
+
+    calibration = {"conf": settings.YOLO_CONF, "nms": settings.YOLO_NMS,
+                   "classes": sorted(settings.yolo_classes()),
+                   "class_conf": settings.yolo_class_conf(),
+                   "min_track_iou": settings.YOLO_MIN_TRACK_IOU,
+                   "track_max_missed": settings.YOLO_TRACK_MAX_MISSED,
+                   "track_max_age_seconds": settings.YOLO_TRACK_MAX_AGE_SECONDS}
     onnx = _find_weights(".onnx")
     if onnx is not None:
         try:
             import onnxruntime  # noqa: F401
 
             return {"provider": "yolo-onnx", "available": True,
-                    "reason": "", "model": str(onnx)}
+                    "reason": "", "model": str(onnx),
+                    "execution_provider": _onnx_provider,
+                    **calibration}
         except Exception as e:  # noqa: BLE001
             return {"provider": "yolo-onnx", "available": False,
-                    "reason": f"onnxruntime not installed: {e}"}
+                    "reason": f"onnxruntime not installed: {e}", **calibration}
     pt = _find_weights(".pt")
     if pt is not None:
         try:
             import ultralytics  # noqa: F401
 
             return {"provider": "yolo", "available": True,
-                    "reason": "", "model": str(pt)}
+                    "reason": "", "model": str(pt), **calibration}
         except Exception as e:  # noqa: BLE001
             return {"provider": "yolo", "available": False,
-                    "reason": f"ultralytics not installed: {e}"}
+                    "reason": f"ultralytics not installed: {e}", **calibration}
     return {"provider": "unavailable", "available": False,
             "reason": "No YOLO weights found in backend/; run scripts/download_yolo.py "
-                      "(yolov8n.onnx for onnxruntime, or yolov8n.pt for ultralytics)"}
-
-
-def reset_tracker() -> None:
-    global _last_tracks, _next_track_id
-    _last_tracks = []
-    _next_track_id = 1
+                      "(yolov8n.onnx for onnxruntime, or yolov8n.pt for ultralytics)",
+            **calibration}
 
 
 def _iou(a: dict, b: dict) -> float:
@@ -102,41 +250,48 @@ def _iou(a: dict, b: dict) -> float:
     return inter / max(area_a + area_b - inter, 1e-6)
 
 
-def _assign_track_ids(detections: list[dict]) -> list[dict]:
-    global _last_tracks, _next_track_id
-    used: set[int] = set()
-    for d in detections:
-        best, best_iou = None, 0.3
-        for i, old in enumerate(_last_tracks):
-            if i in used or old["label"] != d["label"]:
-                continue
-            score = _iou(d, old)
-            if score > best_iou:
-                best, best_iou = i, score
-        if best is not None:
-            d["track_id"] = _last_tracks[best]["track_id"]
-            used.add(best)
-        else:
-            d["track_id"] = _next_track_id
-            _next_track_id += 1
-    _last_tracks = detections
-    return detections
-
-
 def _load_onnx():
-    global _onnx_session
+    """Load the ONNX session, trying the configured execution providers
+    in order (CUDA first when listed, CPU as the fallback). Records
+    which provider actually loaded so /health can report it honestly."""
+    global _onnx_session, _onnx_provider
     if _onnx_session is not None:
         return _onnx_session
     path = _find_weights(".onnx")
     if path is None:
         return None
+    from ..config import settings
+
     import onnxruntime as ort
 
+    wanted = [p.strip() for p in settings.YOLO_EXECUTION_PROVIDERS.split(",") if p.strip()]
+    available = set(ort.get_available_providers())
+    for name in wanted:
+        provider = {"CUDA": "CUDAExecutionProvider", "CPU": "CPUExecutionProvider"}.get(name, name)
+        if provider not in available:
+            continue
+        try:
+            _onnx_session = ort.InferenceSession(str(path), providers=[provider])
+            _onnx_provider = provider
+            return _onnx_session
+        except Exception:
+            continue
+    # Last resort: let onnxruntime pick its default.
     _onnx_session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    _onnx_provider = "CPUExecutionProvider"
     return _onnx_session
 
 
-def _detect_onnx(frame_path: str, conf: float) -> list[dict]:
+def _detect_onnx(frame_path: str, conf: float, tracker: "Tracker | None",
+                 timestamp: float | None = None) -> list[dict]:
+    """ONNX inference + NMS + per-class filtering + track assignment.
+
+    Confidence is per class: max(global conf, YOLO_CLASS_CONF[label]).
+    The class allow-list (YOLO_CLASSES) drops unwanted labels before
+    NMS. NMS threshold comes from YOLO_NMS. Track ids come from the
+    per-video Tracker passed in (or the module default)."""
+    from ..config import settings
+
     import cv2
 
     session = _load_onnx()
@@ -145,6 +300,8 @@ def _detect_onnx(frame_path: str, conf: float) -> list[dict]:
     img = cv2.imread(frame_path)
     if img is None:
         return []
+    class_conf = settings.yolo_class_conf()
+    allowed = settings.yolo_classes()
     h, w = img.shape[:2]
     size = 640
     blob = cv2.resize(img, (size, size))
@@ -163,7 +320,10 @@ def _detect_onnx(frame_path: str, conf: float) -> list[dict]:
         cls_scores = row[4:]
         cls = int(np.argmax(cls_scores))
         score = float(cls_scores[cls])
-        if score < conf:
+        label = COCO_LABELS[cls] if cls < len(COCO_LABELS) else str(cls)
+        if allowed and label not in allowed:
+            continue
+        if score < max(conf, class_conf.get(label, 0.0)):
             continue
         cx, cy, bw, bh = (float(v) for v in row[:4])
         x1 = (cx - bw / 2) * sx
@@ -175,7 +335,7 @@ def _detect_onnx(frame_path: str, conf: float) -> list[dict]:
         labels.append(cls)
     if not boxes:
         return []
-    indices = cv2.dnn.NMSBoxes(boxes, scores, conf, 0.45)
+    indices = cv2.dnn.NMSBoxes(boxes, scores, conf, settings.YOLO_NMS)
     out_dets = []
     for idx in indices.flatten():
         x, y, bw, bh = boxes[idx]
@@ -185,7 +345,7 @@ def _detect_onnx(frame_path: str, conf: float) -> list[dict]:
             "x1": float(x), "y1": float(y), "x2": float(x + bw), "y2": float(y + bh),
             "track_id": None,
         })
-    return _assign_track_ids(out_dets)
+    return (tracker or _default_tracker).update(out_dets, timestamp)
 
 
 def _detect_ultralytics(frame_path: str, conf: float) -> list[dict]:
@@ -215,13 +375,22 @@ def _detect_ultralytics(frame_path: str, conf: float) -> list[dict]:
     return out
 
 
-def detect_frame(frame_path: str, conf: float = 0.35) -> list[dict]:
-    """Return [{label, confidence, x1, y1, x2, y2, track_id}] for one frame."""
+def detect_frame(frame_path: str, conf: float | None = None,
+                 tracker: "Tracker | None" = None,
+                 timestamp: float | None = None) -> list[dict]:
+    """Return [{label, confidence, x1, y1, x2, y2, track_id}] for one frame.
+
+    conf defaults to settings.YOLO_CONF. Pass a per-video Tracker so
+    track ids are stable within that video and isolated from others;
+    without one the module default tracker is used."""
+    from ..config import settings
+
     status = provider_status()
     if not status["available"]:
         return []
+    conf = settings.YOLO_CONF if conf is None else conf
     if status["provider"] == "yolo-onnx":
-        return _detect_onnx(frame_path, conf)
+        return _detect_onnx(frame_path, conf, tracker, timestamp)
     return _detect_ultralytics(frame_path, conf)
 
 

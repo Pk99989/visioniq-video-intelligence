@@ -40,7 +40,9 @@ def dispatch(video_id: int, background=None) -> None:
 
 
 def process_video(video_id: int) -> None:
-    detection.reset_tracker()
+    # One Tracker per video (Phase 3): track ids are stable within the
+    # video and isolated from any other video being processed.
+    tracker = detection.Tracker()
     db: Session = SessionLocal()
     try:
         video = db.get(Video, video_id)
@@ -95,7 +97,8 @@ def process_video(video_id: int) -> None:
                 for i, row in frame_rows:
                     if i not in s["frame_indices"]:
                         continue
-                    for d in detection.detect_frame(row.file_path):
+                    for d in detection.detect_frame(row.file_path, tracker=tracker,
+                                                    timestamp=row.timestamp_seconds):
                         det_labels.append(d["label"])
                         db.add(Detection(video_id=video.id, frame_id=row.id, track_id=d["track_id"],
                                          label=d["label"], confidence=d["confidence"],
