@@ -12,3 +12,5 @@ backend/*.db
 .DS_Store
 *.onnx
 *.pt
+.coverage
+coverage.xml
