@@ -163,6 +163,7 @@ Each item names the file(s) and a concrete fix. Full evidence is in `CODEBASE_AU
 - **Fix:** fail loudly instead of silently switching artefacts; the two weights have different runtime requirements (torch) and the fallback surprises laptop users.
 
 ### L12. Test helpers duplicated across test files
+- **Status: FIXED in v0.13.0 (Phase 11, 2026-11-06).** Shared `tests/conftest.py`: `client`, `auth_user` (uuid email, id resolved from DB), `ready_video`, `bus_video` (per-test tmp_path), `bus_jpg`/`traffic_jpg` from repo-local `tests/data/` (the /tmp images kept being wiped by VM restarts), `db_session`. test_observability.py migrated to the shared fixtures as proof. Two order bugs found and fixed while doing this: (1) conftest now sets SYNC_PROCESSING=1 before any test module loads — a module importing the app without it froze the settings singleton with async processing; (2) test_detection.py never deleted its DB, so a password changed by test_phase3 persisted across runs.
 - **Where:** `backend/tests/test_phase3.py`, `test_privacy.py` (ffmpeg bus-video build + upload), plus per-file env/DB setup preambles.
 - **Fix:** extract a shared `tests/conftest.py` with fixtures (app client, auth headers, bus video).
 

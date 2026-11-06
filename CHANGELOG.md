@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.13.0 — 2026-11-06 (Phase 11 test expansion)
+
+- **Shared fixtures (L12 fixed):** `tests/conftest.py` now has `client`, `auth_user` (uuid email, id resolved from the DB), `ready_video`, `bus_video` (per-test tmp_path), `bus_jpg`/`traffic_jpg` from repo-local `tests/data/` (the /tmp images kept being wiped by VM restarts — now committed), `db_session`. test_observability.py migrated to them as proof. Two order bugs found and fixed while doing this: (1) conftest sets `SYNC_PROCESSING=1` before any test module loads — a module importing the app without it froze the settings singleton with async processing (uploads stayed "uploaded"); (2) test_detection.py never deleted its DB, so a password changed by test_phase3 persisted across runs.
+- **Markers:** `unit` (auto-applied by conftest to any test with no other marker), `integration`, `vlm` (test_vlm_e2e.py + test_rag_eval.py), `e2e`. Counts: 105 unit, 3 integration, 2 vlm, 1 e2e = 111 backend tests.
+- **RAG eval as a test:** `tests/test_rag_eval.py` (vlm) runs the 54-question dataset against the production config and asserts R@5 ≥ 0.60, MRR ≥ 0.40, faithfulness ≥ 0.90, relevance ≥ 0.85, negatives ≥ 0.30. Measured 2026-11-06: **R@1 0.37, R@5 0.66, P@5 0.16, MRR 0.48, latency 170.6 ms, faithfulness 1.0, relevance 0.95, negatives 0.38** — identical to the Phase 4 baseline. Runs in ~2–4 min on CPU; the full 4-config comparison stays in `scripts/rag_eval.py`.
+- **Coverage gate:** measured **80% on `app/services`** (weakest: embeddings.py 44% — fastembed/sentence-transformers paths need model downloads/torch). `requirements-dev.txt` (pytest-cov); CI unit job now runs `--cov=app.services --cov-fail-under=70`.
+- **TESTING.md rewritten:** markers, fixtures, L12 rules, suites by phase, coverage.
+- Full suite: **108 backend tests pass (+ 1 vlm RAG eval, skipped without VISIONIQ_VLM_E2E=1)** + 10 Vitest + 1 Playwright e2e (re-verified against the current build: backend :8001 + rebuilt frontend :3000, 14.9 s).
+
 ## v0.12.0 — 2026-11-06 (Phase 10 observability)
 
 - **Structured JSON logs:** one JSON object per line on stdout (`ts`/`level`/`logger`/`msg`/`request_id`/`job_id` + scalar extras). Request-ID middleware mints or honours `X-Request-ID` and echoes it on the response; the pipeline binds `job_id` (and the upload request's id — via contextvar in-process, via Celery task headers in celery mode) to every log line. `LOG_FORMAT=text` for human-readable dev logs; `PYTHONUNBUFFERED=1` in the Dockerfile so lines flush immediately. **Bug found and fixed while doing this:** alembic's logging config (from `alembic.ini`) replaces the root handlers, sets the root level to WARNING, and disables all loggers not named in the file — after a migration run, no app INFO log and no uvicorn access log was ever emitted. `run_migrations()` now re-applies the logging config after every upgrade (re-enabling the disabled loggers and routing uvicorn's loggers through the JSON handler).

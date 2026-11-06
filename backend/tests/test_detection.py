@@ -14,9 +14,22 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import BUS_JPG, TRAFFIC_JPG
+
 os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/visioniq_test_det.db")
 os.environ.setdefault("STORAGE_DIR", "/tmp/visioniq_test_det_storage")
 os.environ.setdefault("JWT_SECRET", "test-secret-det")
+
+# Phase 11 (L12): this file never deleted its DB, so state (e.g. a
+# password changed by test_phase3) persisted across runs and broke
+# later files whenever this file was collected first.
+import shutil
+
+for p in ("/tmp/visioniq_test_det.db", "/tmp/visioniq_test_det_storage"):
+    if os.path.isdir(p):
+        shutil.rmtree(p)
+    elif os.path.exists(p):
+        os.remove(p)
 
 from app.config import settings  # noqa: E402
 from app.services import detection  # noqa: E402
@@ -109,7 +122,7 @@ needs_weights = pytest.mark.skipif(not WEIGHTS.exists(), reason="no yolov8n.onnx
 def test_real_model_bus_image_labels(monkeypatch):
     monkeypatch.setattr(settings, "YOLO_CLASSES", "")
     monkeypatch.setattr(settings, "YOLO_CLASS_CONF", "")
-    dets = detection.detect_frame("/tmp/bus.jpg", tracker=detection.Tracker())
+    dets = detection.detect_frame(str(BUS_JPG), tracker=detection.Tracker())
     labels = sorted({d["label"] for d in dets})
     assert "bus" in labels and "person" in labels, labels
     assert len(dets) >= 4
@@ -121,7 +134,7 @@ def test_nms_collapses_overlapping_same_label_boxes(monkeypatch):
     survive NMS (threshold YOLO_NMS)."""
     monkeypatch.setattr(settings, "YOLO_CLASSES", "")
     monkeypatch.setattr(settings, "YOLO_CLASS_CONF", "")
-    dets = detection.detect_frame("/tmp/bus.jpg", tracker=detection.Tracker())
+    dets = detection.detect_frame(str(BUS_JPG), tracker=detection.Tracker())
     for i, a in enumerate(dets):
         for b in dets[i + 1:]:
             if a["label"] == b["label"]:
@@ -132,7 +145,7 @@ def test_nms_collapses_overlapping_same_label_boxes(monkeypatch):
 def test_class_allowlist_filters_labels(monkeypatch):
     monkeypatch.setattr(settings, "YOLO_CLASSES", "bus")
     monkeypatch.setattr(settings, "YOLO_CLASS_CONF", "")
-    dets = detection.detect_frame("/tmp/bus.jpg", tracker=detection.Tracker())
+    dets = detection.detect_frame(str(BUS_JPG), tracker=detection.Tracker())
     assert dets and all(d["label"] == "bus" for d in dets), dets
     monkeypatch.setattr(settings, "YOLO_CLASSES", "")
 
@@ -142,7 +155,7 @@ def test_per_class_conf_threshold(monkeypatch):
     """person:0.99 removes all persons; bus survives at default conf."""
     monkeypatch.setattr(settings, "YOLO_CLASSES", "")
     monkeypatch.setattr(settings, "YOLO_CLASS_CONF", "person:0.99")
-    dets = detection.detect_frame("/tmp/bus.jpg", tracker=detection.Tracker())
+    dets = detection.detect_frame(str(BUS_JPG), tracker=detection.Tracker())
     assert all(d["label"] != "person" for d in dets), dets
     assert any(d["label"] == "bus" for d in dets), dets
     monkeypatch.setattr(settings, "YOLO_CLASS_CONF", "")

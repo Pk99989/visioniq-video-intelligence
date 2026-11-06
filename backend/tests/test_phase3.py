@@ -9,6 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from conftest import BUS_JPG, TRAFFIC_JPG
+
 os.environ.setdefault("SYNC_PROCESSING", "1")
 os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/visioniq_test3.db")
 os.environ.setdefault("STORAGE_DIR", "/tmp/visioniq_test3_storage")
@@ -37,7 +39,7 @@ def _auth(email="p3@test.com"):
 
 
 def _upload_bus_video(headers):
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", "/tmp/bus.jpg",
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", str(BUS_JPG),
                     "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "/tmp/bus3.mp4"],
                    check=True)
     with open("/tmp/bus3.mp4", "rb") as f:

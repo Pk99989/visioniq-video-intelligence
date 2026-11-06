@@ -1,11 +1,12 @@
 # PROJECT_STATE — VisionIQ v0.11.0
 
-- **Current phase**: Phase 10 complete (observability), verified 2026-11-06.
-  Phases 0–9 done: audit, real VLM (moondream, CPU), adaptive sampling,
+- **Current phase**: Phase 11 complete (test expansion), verified 2026-11-06.
+  Phases 0–10 done: audit, real VLM (moondream, CPU), adaptive sampling,
   CV calibration, Qdrant-first RAG + 54-question eval, agent + MCP,
   event engine, DB/infra hardening, frontend upgrades, security
-  hardening. Next: Phase 11 test expansion (conftest helpers, coverage
-  gate).
+  hardening, observability. Next: Phase 12 production engineering
+  (non-root Docker, healthchecks, pinned Qdrant, single start command
+  from a clean checkout).
 - **Completed features**: auth + RBAC + per-user isolation; upload
   validation; ffprobe metadata; ffmpeg thumbnails/frames; OpenCV scene
   segmentation; real VLM captions (Ollama moondream verified, llava:7b
@@ -52,6 +53,16 @@
   backup/restore (all row counts matched), Qdrant payload indexes,
   Celery limits + failure handler + recovery grace 600 s, token pruning,
   CI integration job. 78 tests.
+- **v0.13.0 (Phase 11 test expansion)**: shared conftest fixtures
+  (client, auth_user, ready_video, bus_video, repo-local test images
+  in tests/data/); markers unit (auto)/integration/vlm/e2e (105/3/2/1
+  = 111 tests); RAG eval as a test (vlm, 54 questions, production
+  config: R@5 0.66, MRR 0.48, faithfulness 1.0, relevance 0.95,
+  negatives 0.38 — identical to the Phase 4 baseline); coverage 80%
+  on app/services with a 70% CI gate; TESTING.md rewritten; two
+  order bugs fixed (SYNC_PROCESSING in conftest, test_detection DB
+  cleanup). 108 backend tests pass (+ 1 vlm skipped) + 10 Vitest +
+  1 e2e re-verified on the current build.
 - **v0.12.0 (Phase 10 observability)**: structured JSON logs
   (request_id/job_id on every line; request-ID middleware; job id via
   contextvar/Celery headers); `GET /metrics` (HTTP count/latency by
@@ -96,6 +107,24 @@
   tested path); shadcn/ui full adoption; per-provider evidence-floor
   calibration (Phase 4 open follow-up).
 - **Files modified**: see git log.
+- **Tests executed (2026-11-06, v0.13.0, this machine — Linux, no Docker, no GPU)**:
+  - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
+    **108 passed, 1 skipped** (the vlm RAG eval skips without
+    VISIONIQ_VLM_E2E=1).
+  - Markers: `-m unit` collects 105, `-m vlm` 2, `-m "not e2e and
+    not vlm"` 108.
+  - Coverage: `--cov=app.services` → **80%** (gate 70% in CI).
+  - RAG eval test: `VISIONIQ_VLM_E2E=1 pytest tests/test_rag_eval.py
+    -q` → **1 passed** (1m44s–3m49s; R@1 0.37, R@5 0.66, P@5 0.16,
+    MRR 0.48, latency 170.6 ms, faithfulness 1.0, relevance 0.95,
+    negatives 0.38 — matches the Phase 4 baseline exactly).
+  - E2E browser: `VISIONIQ_E2E=1 pytest tests/test_e2e_browser.py -q`
+    → **1 passed** (14.9 s) against the current build (backend :8001
+    v0.13.0 + frontend :3000 rebuilt with the right API URL — the
+    first attempt failed because the frontend was built pointing at
+    :8000, where nothing listens).
+  - Frontend: `npm test` (Vitest) → **10 passed**; `npm run build`
+    (Next 14.2.35) → **compiled successfully, 16 routes**.
 - **Tests executed (2026-11-06, v0.12.0, this machine — Linux, no Docker, no GPU)**:
   - Backend: `pytest backend/tests/ -q` (excl. e2e + vlm e2e) →
     **108 passed** (incl. 6 observability tests: /metrics counters
@@ -169,9 +198,10 @@
   ffmpeg, Node 24, no Docker, no GPU. Target machine — Windows 11,
   WSL2 Ubuntu 24.04, RTX 3050, 16 GB RAM.
 - **Exact next steps**:
-  1. Phase 11: test expansion (shared conftest helpers per L12, repo-local
-     fixtures replacing /tmp ones, coverage gate ~70% on app/services
-     in CI).
+  1. Phase 12: production engineering (non-root Docker images,
+     healthchecks, pinned Qdrant, entrypoint waits for services,
+     single start command verified from a clean checkout, RELEASE.md
+     checklist, git tags).
   2. On the user's WSL machine: `docker compose -f docker-compose.laptop.yml up --build`,
      upload a real video, confirm the flow in the browser.
   3. `gh auth login` then create the GitHub repo and push.

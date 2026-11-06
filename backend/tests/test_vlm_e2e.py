@@ -31,6 +31,9 @@ import httpx  # noqa: E402
 VLM_BASE = os.environ.get("VLM_BASE_URL", "http://localhost:11434/v1")
 VLM_MODEL = os.environ.get("VLM_MODEL", "moondream")
 
+# Phase 11: the vlm marker (the whole file needs a real model).
+pytestmark = pytest.mark.vlm
+
 needs_vlm = pytest.mark.skipif(
     os.environ.get("VISIONIQ_VLM_E2E") != "1",
     reason="real-VLM e2e only runs with VISIONIQ_VLM_E2E=1")

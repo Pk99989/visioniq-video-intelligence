@@ -11,7 +11,8 @@ jobs:
       - run: |
           cd backend
           pip install -r requirements.txt
-          SYNC_PROCESSING=1 DATABASE_URL="sqlite:////tmp/visioniq_test.db" STORAGE_DIR="/tmp/visioniq_test_storage" JWT_SECRET="ci-test-secret" python -m pytest tests/ -q -m "not integration and not e2e and not vlm"
+          pip install -r requirements-dev.txt
+          SYNC_PROCESSING=1 DATABASE_URL="sqlite:////tmp/visioniq_test.db" STORAGE_DIR="/tmp/visioniq_test_storage" JWT_SECRET="ci-test-secret" python -m pytest tests/ -q -m "not integration and not e2e and not vlm" --cov=app.services --cov-report=term-missing --cov-fail-under=70
   backend-integration:
     # Live-infra checks (Phase 7): migrations + pooling against real
     # Postgres, Celery reliability against real Redis, Qdrant payload

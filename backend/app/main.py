@@ -27,7 +27,7 @@ from .services.vlm import check_health as vlm_health, provider_name, validate_vl
 configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
 logger = logging.getLogger("visioniq.main")
 
-app = FastAPI(title="VisionIQ", version="0.12.0",
+app = FastAPI(title="VisionIQ", version="0.13.0",
               description="Multimodal Video Intelligence and Agentic Search Platform (independent implementation, inspired by NVIDIA VSS architecture).")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -131,7 +131,7 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.12.0", "vlm_provider": provider_name(),
+    return {"status": "ok", "version": "0.13.0", "vlm_provider": provider_name(),
             "embedding_provider": settings.EMBEDDING_PROVIDER,
             "worker_mode": settings.WORKER_MODE,
             "detection": detection.provider_status()}

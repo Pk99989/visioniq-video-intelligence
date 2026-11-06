@@ -1,4 +1,5 @@
-"""Observability tests (Phase 10, v0.12.0).
+"""Observability tests (Phase 10, v0.12.0; migrated to the shared
+conftest fixtures in Phase 11).
 
 - /metrics serves real Prometheus counters after an upload + search.
 - X-Request-ID is echoed on the response and honoured when supplied.
@@ -13,7 +14,6 @@ import io
 import json
 import logging
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -32,35 +32,35 @@ for p in ("/tmp/visioniq_test_obs2.db", "/tmp/visioniq_test_obs2_storage"):
     elif os.path.exists(p):
         os.remove(p)
 
-from fastapi.testclient import TestClient  # noqa: E402
-
 from app.config import settings  # noqa: E402
-from app.main import app  # noqa: E402
 from app.services.logging_config import (  # noqa: E402
-    JsonFormatter, request_id_ctx, set_job_id, set_request_id)
-
-client = TestClient(app, raise_server_exceptions=False)
+    JsonFormatter, job_id_ctx, request_id_ctx, set_job_id, set_request_id)
 
 
-def _auth(email="obs@test.com"):
-    client.post("/api/v1/auth/register", json={"email": email, "password": "password123"})
-    r = client.post("/api/v1/auth/login", json={"email": email, "password": "password123"})
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+def _metric_value(body: str, name: str) -> float:
+    """Value of a counter line `name 1.0` (no labels) or the sum over
+    its labelled lines. Counters are process-global, so tests assert
+    deltas, never absolute values. A series that has never been
+    observed does not appear in /metrics at all — that means 0."""
+    total = 0.0
+    for line in body.splitlines():
+        if line.startswith(name) and (" " in line or "\t" in line):
+            total += float(line.rsplit(None, 1)[-1])
+    return total
 
 
-def _upload(headers):
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", "/tmp/bus.jpg",
-                    "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "/tmp/bus3.mp4"],
-                   check=True)
-    with open("/tmp/bus3.mp4", "rb") as f:
-        r = client.post("/api/v1/videos/upload", data={"title": "obs"},
-                        files={"file": ("bus.mp4", f, "video/mp4")},
-                        headers={**headers, "X-Request-ID": "obs-upload-1"})
-    assert r.status_code == 201 and r.json()["status"] == "ready", r.text
-    return r.json()["id"]
+def _qdrant_live() -> bool:
+    """True when a Qdrant server answers on localhost (the search
+    only takes the Qdrant read path when QDRANT_URL is set)."""
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://127.0.0.1:6333/", timeout=2)
+        return True
+    except Exception:
+        return False
 
 
-def test_metrics_endpoint_serves_counters():
+def test_metrics_endpoint_serves_counters(client):
     r = client.get("/metrics")
     assert r.status_code == 200, r.text
     assert "text/plain" in r.headers["content-type"]
@@ -77,7 +77,7 @@ def test_metrics_endpoint_serves_counters():
         assert name in body, f"{name} missing from /metrics"
 
 
-def test_request_id_echoed_and_honoured():
+def test_request_id_echoed_and_honoured(client):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.headers.get("X-Request-ID"), "a request id must be minted"
@@ -86,39 +86,20 @@ def test_request_id_echoed_and_honoured():
     assert r2.headers["X-Request-ID"] == "client-supplied-42"
 
 
-def _metric_value(body: str, name: str) -> float:
-    """Value of a counter line `name 1.0` (no labels) or the sum over
-    its labelled lines. Counters are process-global, so tests assert
-    deltas, never absolute values."""
-    total = 0.0
-    found = False
-    for line in body.splitlines():
-        if line.startswith(name) and (" " in line or "\t" in line):
-            total += float(line.rsplit(None, 1)[-1])
-            found = True
-    assert found, f"{name} missing from /metrics"
-    return total
-
-
-def _qdrant_live() -> bool:
-    """True when a Qdrant server answers on localhost (the search
-    only takes the Qdrant read path when QDRANT_URL is set)."""
-    try:
-        import urllib.request
-        urllib.request.urlopen("http://127.0.0.1:6333/", timeout=2)
-        return True
-    except Exception:
-        return False
-
-
-def test_pipeline_metrics_after_upload_and_search(monkeypatch):
-    h = _auth()
+def test_pipeline_metrics_after_upload_and_search(client, auth_user, bus_video, monkeypatch):
+    # The upload happens inside the test body (not via the ready_video
+    # fixture) so the "before" snapshot below really is before it.
+    h = auth_user["headers"]
     before = client.get("/metrics").text
     jobs_before = _metric_value(before, "visioniq_video_processing_jobs_total{status=\"done\"}")
     dur_before = _metric_value(before, "visioniq_video_processing_duration_seconds_count")
     det_before = _metric_value(before, "visioniq_detection_seconds_count")
     qdrant_before = _metric_value(before, "visioniq_qdrant_search_seconds_count")
-    vid = _upload(h)
+    with open(bus_video, "rb") as f:
+        r = client.post("/api/v1/videos/upload", headers=h,
+                        data={"title": "bus"}, files={"file": ("bus.mp4", f, "video/mp4")})
+    assert r.status_code == 201 and r.json()["status"] == "ready", r.text
+    vid = r.json()["id"]
     # Point search at the live Qdrant server when there is one, so
     # the read path is exercised (in CI's unit job there is no server
     # and search falls back to the DB scan — the counter then stays
@@ -139,12 +120,12 @@ def test_pipeline_metrics_after_upload_and_search(monkeypatch):
     assert f'route="/api/v1/videos/{vid}"' not in body
 
 
-def test_celery_queue_unknown_without_celery():
+def test_celery_queue_unknown_without_celery(client):
     body = client.get("/metrics").text
     assert "visioniq_celery_queue_depth -1.0" in body
 
 
-def test_metrics_can_be_disabled(monkeypatch):
+def test_metrics_can_be_disabled(client, monkeypatch):
     monkeypatch.setattr(settings, "METRICS_ENABLED", False)
     assert client.get("/metrics").status_code == 404
     monkeypatch.setattr(settings, "METRICS_ENABLED", True)
@@ -166,7 +147,6 @@ def test_json_formatter_emits_parseable_lines():
         lg.warning("a warning")
     finally:
         request_id_ctx.reset(rid)
-        from app.services.logging_config import job_id_ctx
         job_id_ctx.reset(jid)
     lines = [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
     assert len(lines) == 2
