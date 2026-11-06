@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## v0.7.0 — 2026-11-06 (Phase 5 agent + MCP)
+
+- **8 tools:** added `detection_analytics` (counts by label, track count, dwell stats), `timeline_analysis` (scene-by-scene captions + detections), `report_generation` (same record as `POST /reports`, shared `create_report_record` service). Registry `agent.TOOLS` is the single source of truth, now with `inputSchema` per tool.
+- **Multi-step planner:** `_plan` routes by intent keywords (deterministic, tested); a question matching several tools runs up to 3 in a fixed order and merges validated citations (`tool: "multi_step"`). Single-tool questions behave exactly as before.
+- **LangGraph decision (ADR 0001):** LangGraph NOT adopted — tools are deterministic functions, state already persists in the DB, no LLM tool-calling loop exists; a 3-node graph would add dependency churn for no capability. Revisit if a tool ever needs free-form LLM planning.
+- **MCP hardening:** `agent.run_tool` is the single entry point for agent + MCP; stdio preserves request ids on errors (-32700 malformed JSON, -32602 unknown tool/missing args, -32601 unknown method); HTTP returns 400 (not 500) for bad calls; `create_http_app()` factored out for tests. NO_PROXY fix in `_llm_synthesize` (audit M3, `trust_env=False`).
+- **Retrieval fix (found by the MCP test):** an empty/drifted Qdrant index no longer makes search return nothing — the DB scan runs as the safety net and logs drift. Regression test added.
+- **Tests:** 16 new (test_agent.py, test_mcp.py). Full suite: **63 tests pass** (plus 1 real-VLM e2e, run separately). RAG eval re-run after Phase 5: numbers within run-to-run noise (R@5 0.66, relevance 0.95, negatives 0.38); doc notes moondream non-determinism.
+
 ## v0.6.0 — 2026-11-06 (Phase 4 RAG upgrade)
 
 - **Qdrant read path:** search now queries Qdrant first (owner-scoped payload filter, label/provider/timestamp/video filters) and enriches hits from the DB; on any Qdrant error it logs a warning and falls back to the DB scan. Upsert failures are logged, not swallowed. `scripts/reindex_qdrant.py` rebuilds the collection from the DB.
